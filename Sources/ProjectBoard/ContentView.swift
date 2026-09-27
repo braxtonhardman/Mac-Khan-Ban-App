@@ -268,12 +268,25 @@ struct ProjectBoardView: View {
                 }.pickerStyle(.menu).padding(.horizontal, 20)
             }
             Divider()
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 14) {
-                    ForEach(compactLayout ? [mobileStatus] : TaskStatus.allCases) { status in
-                        column(status)
+            GeometryReader { geometry in
+                let statuses = compactLayout ? [mobileStatus] : TaskStatus.allCases
+                let spacing: CGFloat = 14
+                let horizontalPadding: CGFloat = 20
+                let availableWidth = max(0, geometry.size.width - horizontalPadding * 2)
+                let gaps = spacing * CGFloat(statuses.count - 1)
+                let columnWidth = compactLayout
+                    ? availableWidth
+                    : max(180, (availableWidth - gaps) / CGFloat(statuses.count))
+                let columnHeight = max(0, geometry.size.height - 40)
+
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: spacing) {
+                        ForEach(statuses) { status in
+                            column(status, width: columnWidth, height: columnHeight)
+                        }
                     }
-                }.padding(20)
+                    .padding(horizontalPadding)
+                }
             }
         }
         .navigationTitle(project.name)
@@ -298,16 +311,19 @@ struct ProjectBoardView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
-    private func column(_ status: TaskStatus) -> some View {
+    private func column(_ status: TaskStatus, width: CGFloat, height: CGFloat) -> some View {
         let tasks = project.taskList.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(appearance.title(for: status), systemImage: status.symbol).font(.headline)
+                Label(appearance.title(for: status), systemImage: status.symbol)
+                    .font(.headline).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(appearance.title(for: status))
                 Text("\(tasks.count)").foregroundStyle(.secondary)
                 Spacer()
                 Button { editor = .init(status: status) } label: { Image(systemName: "plus") }
                     .buttonStyle(.borderless).help("Add task to \(appearance.title(for: status))")
-            }
+            }.frame(minHeight: 36, alignment: .top)
             ScrollView {
                 LazyVStack(spacing: 10) {
                     ForEach(tasks) { task in
@@ -333,8 +349,8 @@ struct ProjectBoardView: View {
                 }.padding(2)
             }
         }
-        .padding(12).frame(width: compactLayout ? 285 : 245)
-        .frame(maxHeight: .infinity)
+        .padding(12)
+        .frame(width: width, height: height)
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { values, _ in
