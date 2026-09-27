@@ -23,6 +23,9 @@ struct ProjectBoardApp: App {
         WindowGroup {
             if let container {
                 AppRootView().modelContainer(container).environmentObject(SyncStatus.shared)
+                    #if os(macOS)
+                    .background(SolidTitlebarBackground())
+                    #endif
 
             } else {
                 ContentUnavailableView {
@@ -41,3 +44,66 @@ struct ProjectBoardApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+/// AppKit moves the native buttons into a separate title-bar host in full screen.
+/// Follow that host so its background remains opaque during the reveal animation.
+private struct SolidTitlebarBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> AttachmentView { AttachmentView() }
+    func updateNSView(_ view: AttachmentView, context: Context) { view.installBackground() }
+
+    final class AttachmentView: NSView {
+        private let background = BackgroundView()
+        private var observer: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            guard window != nil else {
+                background.removeFromSuperview()
+                return
+            }
+            installBackground()
+            observer = NotificationCenter.default.addObserver(
+                forName: NSApplication.didUpdateNotification, object: nil, queue: .main
+            ) { [weak self] _ in self?.installBackground() }
+        }
+
+        func installBackground() {
+            guard let window,
+                  let close = window.standardWindowButton(.closeButton),
+                  let host = close.superview,
+                  host.bounds.height > 0, host.bounds.height < 120,
+                  background.superview !== host else { return }
+            background.removeFromSuperview()
+            background.frame = host.bounds
+            background.autoresizingMask = [.width, .height]
+            host.addSubview(background, positioned: .above, relativeTo: nil)
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                if let button = window.standardWindowButton(kind), button.superview === host {
+                    host.addSubview(button, positioned: .above, relativeTo: background)
+                }
+            }
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+    }
+
+    final class BackgroundView: NSView {
+        override var isOpaque: Bool { true }
+        override var allowsVibrancy: Bool { false }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.windowBackgroundColor.setFill()
+            dirtyRect.fill()
+        }
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            needsDisplay = true
+        }
+    }
+}
+#endif

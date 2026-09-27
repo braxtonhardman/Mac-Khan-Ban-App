@@ -57,6 +57,8 @@ struct ContentView: View {
             #endif
             #if os(macOS)
             .toolbar(removing: .sidebarToggle)
+            .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
+            .toolbarBackground(.visible, for: .windowToolbar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 12) {
                     Text("Workspace").font(.headline).lineLimit(1)
@@ -94,6 +96,8 @@ struct ContentView: View {
             }
         }
         #if os(macOS)
+        .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
         .overlay(alignment: .topTrailing) {
             if selected == nil {
                 HStack {
