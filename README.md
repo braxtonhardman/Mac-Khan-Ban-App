@@ -55,6 +55,7 @@ The top-right profile button opens shared board preferences:
 
 - Rename all five stages. Names apply across projects and task status menus; the fifth stage still counts as completed work.
 - Choose red, orange, yellow, green, teal, blue, purple, or pink as the app accent.
+- Choose System, Light, or Dark appearance. Light and Dark override the device setting; System follows each device. The choice syncs with your profile.
 - Save to apply changes. These preferences persist in SwiftData and sync in iCloud builds.
 - If two devices independently create a profile while offline, the newest saved profile is selected after sync; there is no database uniqueness constraint. Simultaneous edits remain subject to CloudKit merge behavior.
 - Area collapse remains a local display preference.

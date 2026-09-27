@@ -84,13 +84,14 @@ final class AppProfile {
     var updatedAt: Date = Date()
     var stageNames: [String] = ["Backlog", "Planned", "In Progress", "Blocked", "Done"]
     var accentName: String = "blue"
+    var appearanceMode: String = "system"
 
     init(stageNames: [String], accent: AccentChoice) {
         self.stageNames = stageNames
         accentName = accent.rawValue
     }
     var appearance: BoardAppearance {
-        BoardAppearance(stageNames: stageNames, accent: AccentChoice(rawValue: accentName) ?? .blue)
+        BoardAppearance(stageNames: stageNames, accent: AccentChoice(rawValue: accentName) ?? .blue, mode: AppearanceMode(rawValue: appearanceMode) ?? .system)
     }
     static func current(in profiles: [AppProfile]) -> AppProfile? {
         profiles.sorted {

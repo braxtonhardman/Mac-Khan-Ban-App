@@ -6,12 +6,20 @@ public enum AccentChoice: String, CaseIterable, Identifiable, Codable {
     public var title: String { rawValue.capitalized }
 }
 
+public enum AppearanceMode: String, CaseIterable, Identifiable, Codable {
+    case system, light, dark
+    public var id: String { rawValue }
+    public var title: String { rawValue.capitalized }
+}
+
 public struct BoardAppearance: Equatable {
     public var stageNames: [String]
     public var accent: AccentChoice
-    public init(stageNames: [String] = TaskStatus.allCases.map(\.title), accent: AccentChoice = .blue) {
+    public var mode: AppearanceMode
+    public init(stageNames: [String] = TaskStatus.allCases.map(\.title), accent: AccentChoice = .blue, mode: AppearanceMode = .system) {
         self.stageNames = stageNames
         self.accent = accent
+        self.mode = mode
     }
     public func title(for status: TaskStatus) -> String {
         let index = TaskStatus.allCases.firstIndex(of: status)!

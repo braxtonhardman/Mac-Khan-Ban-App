@@ -91,6 +91,7 @@ struct SolidTitlebarBackground: NSViewRepresentable {
                   let close = window.standardWindowButton(.closeButton),
                   let host = close.superview,
                   host.bounds.height > 0 else { return }
+            background.appearance = window.effectiveAppearance
             let needsInstall = background.superview !== host
             let barHeight: CGFloat = min(host.bounds.height, 32)
             let frame = NSRect(

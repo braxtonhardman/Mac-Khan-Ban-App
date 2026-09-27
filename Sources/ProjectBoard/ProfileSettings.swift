@@ -28,6 +28,16 @@ extension AccentChoice {
     }
 }
 
+extension AppearanceMode {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 struct AppRootView: View {
     @State private var titlebarClearance: CGFloat = 0
     @Query private var profiles: [AppProfile]
@@ -41,6 +51,7 @@ struct AppRootView: View {
             .environment(\.boardAppearance, appearance)
             .tint(appearance.accent.color)
             .accentColor(appearance.accent.color)
+            .preferredColorScheme(appearance.mode.colorScheme)
     }
 }
 
@@ -61,6 +72,15 @@ struct ProfileSettingsView: View {
                 Spacer()
             }.padding(20)
             Form {
+                Section("Appearance") {
+                    Picker("Theme", selection: $draft.mode) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }.pickerStyle(.segmented)
+                    Text("System follows your device. Light or Dark overrides it for this app.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Board stages") {
                     ForEach(Array(TaskStatus.allCases.enumerated()), id: \.element.id) { index, status in
                         TextField(status.title, text: $draft.stageNames[index])
@@ -89,7 +109,7 @@ struct ProfileSettingsView: View {
                     }
                 }
                 Section("iCloud") {
-                    Text("Your stage names and accent color sync between Mac and iPhone when both use an iCloud build. Area collapse stays specific to each device.")
+                    Text("Your appearance, stage names, and accent color sync between Mac and iPhone when both use an iCloud build. Area collapse stays specific to each device.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Storage & Sync…") { showingSync = true }
                 }
@@ -105,7 +125,7 @@ struct ProfileSettingsView: View {
         .modifier(EditorSizing(width: 520, height: 660))
         .onAppear {
             guard !loaded else { return }
-            draft = BoardAppearance(stageNames: TaskStatus.allCases.map { appearance.title(for: $0) }, accent: appearance.accent)
+            draft = BoardAppearance(stageNames: TaskStatus.allCases.map { appearance.title(for: $0) }, accent: appearance.accent, mode: appearance.mode)
             loaded = true
         }
         .sheet(isPresented: $showingSync) { SyncStatusView() }
@@ -117,6 +137,7 @@ struct ProfileSettingsView: View {
         if profile.modelContext == nil { context.insert(profile) }
         profile.stageNames = names
         profile.accentName = draft.accent.rawValue
+        profile.appearanceMode = draft.mode.rawValue
         profile.updatedAt = Date()
         do { try StoreWriter.save(context); dismiss() }
         catch { self.error = error.localizedDescription }
