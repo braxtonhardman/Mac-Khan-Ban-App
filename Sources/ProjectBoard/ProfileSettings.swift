@@ -29,10 +29,17 @@ extension AccentChoice {
 }
 
 struct AppRootView: View {
+    #if os(macOS)
+    @State private var titlebarClearance: CGFloat = 0
+    #endif
     @Query private var profiles: [AppProfile]
     var body: some View {
         let appearance = AppProfile.current(in: profiles)?.appearance ?? BoardAppearance()
         ContentView()
+            #if os(macOS)
+            .padding(.top, titlebarClearance)
+            .background(SolidTitlebarBackground { titlebarClearance = $0 })
+            #endif
             .environment(\.boardAppearance, appearance)
             .tint(appearance.accent.color)
             .accentColor(appearance.accent.color)

@@ -23,9 +23,6 @@ struct ProjectBoardApp: App {
         WindowGroup {
             if let container {
                 AppRootView().modelContainer(container).environmentObject(SyncStatus.shared)
-                    #if os(macOS)
-                    .background(SolidTitlebarBackground())
-                    #endif
 
             } else {
                 ContentUnavailableView {
@@ -48,11 +45,22 @@ struct ProjectBoardApp: App {
 #if os(macOS)
 /// AppKit moves the native buttons into a separate title-bar host in full screen.
 /// Follow that host so its background remains opaque during the reveal animation.
-private struct SolidTitlebarBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> AttachmentView { AttachmentView() }
-    func updateNSView(_ view: AttachmentView, context: Context) { view.installBackground() }
+struct SolidTitlebarBackground: NSViewRepresentable {
+    var onClearanceChange: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> AttachmentView {
+        let view = AttachmentView()
+        view.onClearanceChange = onClearanceChange
+        return view
+    }
+    func updateNSView(_ view: AttachmentView, context: Context) {
+        view.onClearanceChange = onClearanceChange
+        view.installBackground()
+    }
 
     final class AttachmentView: NSView {
+        var onClearanceChange: ((CGFloat) -> Void)?
+        private var lastClearance: CGFloat = -1
         private let background = BackgroundView()
         private var observer: NSObjectProtocol?
 
@@ -71,7 +79,15 @@ private struct SolidTitlebarBackground: NSViewRepresentable {
         }
 
         func installBackground() {
-            guard let window,
+            guard let window else { return }
+            // The revealed full-screen title bar overlays content instead of adding a safe area.
+            let height = window.standardWindowButton(.closeButton)?.superview?.bounds.height ?? 32
+            let clearance = window.styleMask.contains(.fullScreen) ? min(max(height, 32), 80) : 0
+            if clearance != lastClearance {
+                lastClearance = clearance
+                DispatchQueue.main.async { [weak self] in self?.onClearanceChange?(clearance) }
+            }
+            guard
                   let close = window.standardWindowButton(.closeButton),
                   let host = close.superview,
                   host.bounds.height > 0, host.bounds.height < 120,
