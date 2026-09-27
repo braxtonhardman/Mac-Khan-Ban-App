@@ -8,6 +8,8 @@ struct ContentView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Project.createdAt) private var projects: [Project]
     @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
+    @AppStorage("collapsedAreas") private var collapsedAreas = ""
+    @AppStorage("projectRowOverrides") private var projectRowOverrides = ""
     @State private var areaEditor: AreaEditRequest?
     @State private var removingArea: ProjectArea?
     @State private var selection: UUID?
@@ -19,21 +21,21 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                Section("Unassigned") {
-                    ForEach(projects.filter { $0.area == nil }) { project in
-                        projectRow(project)
+                Section {
+                    if !isCollapsed("unassigned") {
+                        ForEach(projects.filter { $0.area == nil }) { projectRow($0) }
                     }
-                }
+                } header: { areaHeader("Unassigned", key: "unassigned") }
                 ForEach(areas) { area in
                     Section {
-                        ForEach(projects.filter { $0.area?.id == area.id }) { project in
-                            projectRow(project)
-                        }
-                        if area.projects.isEmpty {
-                            Text("No projects yet").font(.caption).foregroundStyle(.secondary)
+                        if !isCollapsed(area.id.uuidString) {
+                            ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
+                            if area.projects.isEmpty {
+                                Text("No projects yet").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     } header: {
-                        Text(area.name)
+                        areaHeader(area.name, key: area.id.uuidString)
                             .contextMenu {
                                 Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
                                 Button("Rename Area…") { areaEditor = .init(area: area) }
@@ -72,8 +74,12 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(minWidth: 900, minHeight: 600)
-        .onAppear { if selection == nil { selection = projects.first?.id } }
+        .modifier(MainWindowSizing())
+        .onAppear {
+            #if os(macOS)
+            if selection == nil { selection = projects.first?.id }
+            #endif
+        }
         .sheet(item: $projectEditor) { request in
             ProjectEditor(project: request.project, initialArea: request.area) { selection = $0 }
         }
@@ -103,17 +109,53 @@ struct ContentView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
-    private func projectRow(_ project: Project) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(project.name).font(.headline)
+    private func isCollapsed(_ key: String) -> Bool { collapsedAreas.split(separator: ",").contains(Substring(key)) }
+    private func toggle(_ key: String, in value: inout String) {
+        var keys = Set(value.split(separator: ",").map(String.init))
+        if keys.contains(key) { keys.remove(key) } else { keys.insert(key) }
+        value = keys.sorted().joined(separator: ",")
+    }
+    private func areaHeader(_ name: String, key: String) -> some View {
+        Button { toggle(key, in: &collapsedAreas) } label: {
             HStack {
-                ProgressView(value: project.progress).frame(width: 90)
-                Text(project.progress, format: .percent.precision(.fractionLength(0)))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+                Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
+                Text(name)
+                Spacer()
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain)
+            .accessibilityLabel("\(isCollapsed(key) ? "Expand" : "Collapse") \(name)")
+    }
+    private func isCompact(_ project: Project) -> Bool {
+        let overridden = projectRowOverrides.split(separator: ",").contains(Substring(project.id.uuidString))
+        #if os(iOS)
+        return !overridden
+        #else
+        return overridden
+        #endif
+    }
+    private func projectRow(_ project: Project) -> some View {
+        NavigationLink(value: project.id) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(project.name).font(isCompact(project) ? .body : .headline)
+                    Spacer()
+                    Button { toggle(project.id.uuidString, in: &projectRowOverrides) } label: {
+                        Image(systemName: isCompact(project) ? "chevron.down" : "chevron.up").font(.caption)
+                    }.buttonStyle(.borderless)
+                        .accessibilityLabel(isCompact(project) ? "Show project progress" : "Hide project progress")
+                }
+                if !isCompact(project) {
+                    HStack {
+                        ProgressView(value: project.progress).frame(width: 90)
+                        Text(project.progress, format: .percent.precision(.fractionLength(0)))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }.padding(.vertical, isCompact(project) ? 0 : 5)
         }
-        .padding(.vertical, 5).tag(project.id)
+        .tag(project.id)
         .contextMenu {
+            Button(isCompact(project) ? "Show Project Progress" : "Compact Project Row") { toggle(project.id.uuidString, in: &projectRowOverrides) }
             Button("Edit Project…") { projectEditor = .init(project: project) }
             Menu("Move to Area") {
                 Button("Unassigned") { project.area = nil; saveChanges() }
@@ -181,7 +223,7 @@ struct ProjectEditor: View {
                 }.keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-        }.padding(24).frame(width: 440)
+        }.padding(24).modifier(EditorSizing(width: 440))
     }
 }
 
@@ -193,6 +235,17 @@ struct TaskEditRequest: Identifiable {
 
 struct ProjectBoardView: View {
     @Environment(\.modelContext) private var context
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+    private var compactLayout: Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
+    @State private var mobileStatus: TaskStatus = .backlog
     @Bindable var project: Project
     let editProject: () -> Void
     let deleteProject: () -> Void
@@ -206,17 +259,22 @@ struct ProjectBoardView: View {
             VStack(alignment: .leading, spacing: 10) {
                 if !project.notes.isEmpty { Text(project.notes).foregroundStyle(.secondary).lineLimit(2) }
                 HStack {
-                    ProgressView(value: project.progress).frame(width: 160)
+                    ProgressView(value: project.progress).frame(width: compactLayout ? 65 : 160)
                     Text(project.progress, format: .percent.precision(.fractionLength(0))).font(.headline)
                     Text("· \(project.tasks.filter { $0.status == .done }.count) of \(project.tasks.count) tasks complete")
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
             }.padding(20)
+            if compactLayout {
+                Picker("Column", selection: $mobileStatus) {
+                    ForEach(TaskStatus.allCases) { Text($0.title).tag($0) }
+                }.pickerStyle(.menu).padding(.horizontal, 20)
+            }
             Divider()
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 14) {
-                    ForEach(TaskStatus.allCases) { status in
+                    ForEach(compactLayout ? [mobileStatus] : TaskStatus.allCases) { status in
                         column(status)
                     }
                 }.padding(20)
@@ -278,7 +336,7 @@ struct ProjectBoardView: View {
                 }.padding(2)
             }
         }
-        .padding(12).frame(width: 245)
+        .padding(12).frame(width: compactLayout ? 285 : 245)
         .frame(maxHeight: .infinity)
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
@@ -373,6 +431,28 @@ private struct AreaEditor: View {
                     catch { self.error = error.localizedDescription }
                 }.keyboardShortcut(.defaultAction).disabled(cleanName.isEmpty || duplicate)
             }
-        }.padding(24).frame(width: 440)
+        }.padding(24).modifier(EditorSizing(width: 440))
+    }
+}
+
+struct MainWindowSizing: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.frame(minWidth: 900, minHeight: 600)
+        #else
+        content
+        #endif
+    }
+}
+
+struct EditorSizing: ViewModifier {
+    var width: CGFloat
+    var height: CGFloat? = nil
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.frame(width: width, height: height)
+        #else
+        content.frame(maxWidth: .infinity)
+        #endif
     }
 }

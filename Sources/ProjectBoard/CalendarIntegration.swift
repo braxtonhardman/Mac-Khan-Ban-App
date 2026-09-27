@@ -98,6 +98,6 @@ struct CalendarDeadlineSheet: View {
                 }.buttonStyle(.borderedProminent)
                     .disabled(!integration.ready || task.dueDate == nil)
             }
-        }.padding(24).frame(idealWidth: 460)
+        }.padding(24).modifier(EditorSizing(width: 460))
     }
 }

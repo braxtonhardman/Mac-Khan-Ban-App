@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ProjectBoard",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [.executable(name: "ProjectBoard", targets: ["ProjectBoard"])],
     targets: [
         .target(name: "BoardCore"),

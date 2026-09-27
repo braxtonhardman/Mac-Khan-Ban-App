@@ -27,10 +27,12 @@ struct ProjectBoardApp: App {
                     Text(startupError ?? "Unknown storage error")
                     Text("Your data has not been reset. Close the app and check available disk space and permissions before trying again.")
                 }
-                .padding().frame(width: 600, height: 300)
+                .padding().modifier(EditorSizing(width: 600, height: 300))
             }
         }
+        #if os(macOS)
         .defaultSize(width: 1440, height: 850)
         .commands { CommandGroup(replacing: .newItem) {} }
+        #endif
     }
 }

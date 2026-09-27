@@ -58,7 +58,7 @@ struct TaskEditor: View {
                     Toggle("Due date", isOn: $hasDueDate)
                     if hasDueDate {
                         DatePicker("Due", selection: $dueDate, displayedComponents: .date)
-                        Text("After saving, right-click the card and choose Add or Update Deadline in Calendar.")
+                        Text("After saving, right-click or long-press the card and choose Add or Update Deadline in Calendar.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     TextField("Tags, separated by commas", text: $tags)
@@ -91,7 +91,7 @@ struct TaskEditor: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }.padding(20)
-        }.frame(width: 560, height: 690)
+        }.modifier(EditorSizing(width: 560, height: 690))
     }
     private func addItem() {
         let text = newItem.trimmingCharacters(in: .whitespacesAndNewlines)
