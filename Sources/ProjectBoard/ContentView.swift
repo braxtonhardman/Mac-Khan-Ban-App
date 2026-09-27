@@ -55,12 +55,11 @@ struct ContentView: View {
             #if os(iOS)
             .navigationTitle("ProjectBoard")
             #endif
-            .navigationSplitViewColumnWidth(min: 200, ideal: 230)
             #if os(macOS)
             .toolbar(removing: .sidebarToggle)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 12) {
-                    Text("Projects").font(.headline)
+                    Text("Workspace").font(.headline).lineLimit(1)
                     Spacer()
                     creationMenu
                     Button {
@@ -78,10 +77,11 @@ struct ContentView: View {
                 ToolbarItem(placement: .automatic) { creationMenu }
             }
             #endif
+            .navigationSplitViewColumnWidth(min: 230, ideal: 230)
 
         } detail: {
             if let selected {
-                ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected })
+                ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected }, showProfile: { showingProfile = true }, showSidebar: columnVisibility == .detailOnly ? { withAnimation { columnVisibility = .all } } : nil)
                     .id(selected.id)
             } else {
                 ContentUnavailableView {
@@ -93,26 +93,27 @@ struct ContentView: View {
                 }
             }
         }
-        .toolbar {
-            #if os(macOS)
-            if columnVisibility == .detailOnly {
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        withAnimation { columnVisibility = .all }
-                    } label: { Label("Show Sidebar", systemImage: "sidebar.left") }
-                        .help("Show Sidebar")
-                }
-            }
-            ToolbarItem(placement: .automatic) { Spacer() }
-            #endif
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle") }
-                    .help("Profile & Settings")
+        #if os(macOS)
+        .overlay(alignment: .topTrailing) {
+            if selected == nil {
+                HStack {
+                    if columnVisibility == .detailOnly {
+                        Button { withAnimation { columnVisibility = .all } } label: {
+                            Label("Show Sidebar", systemImage: "sidebar.left")
+                        }
+                    }
+                    Button { showingProfile = true } label: {
+                        Label("Profile & Settings", systemImage: "person.crop.circle")
+                    }
+                }.labelStyle(.iconOnly).padding(20)
             }
         }
-        #if os(macOS)
-        .padding(.top, 12)
-        .toolbarBackground(.hidden, for: .windowToolbar)
+        #else
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle") }
+            }
+        }
         #endif
         .modifier(MainWindowSizing())
         .onAppear {
@@ -288,6 +289,8 @@ struct ProjectBoardView: View {
     @Bindable var project: Project
     let editProject: () -> Void
     let deleteProject: () -> Void
+    let showProfile: () -> Void
+    let showSidebar: (() -> Void)?
     @State private var editor: TaskEditRequest?
     @State private var calendarTask: BoardTask?
     @State private var deleting: BoardTask?
@@ -297,10 +300,20 @@ struct ProjectBoardView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 #if os(macOS)
-                Text(project.name)
-                    .font(.title2.bold())
-                    .lineLimit(2)
-                    .textSelection(.enabled)
+                HStack(alignment: .top, spacing: 16) {
+                    Text(project.name)
+                        .font(.title2.bold())
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                    Spacer()
+                    if let showSidebar {
+                        Button(action: showSidebar) { Image(systemName: "sidebar.left") }
+                            .help("Show Sidebar").accessibilityLabel("Show Sidebar")
+                    }
+                    Button(action: showProfile) { Image(systemName: "person.crop.circle") }
+                        .help("Profile & Settings").accessibilityLabel("Profile & Settings")
+                    projectOptions
+                }.buttonStyle(.borderless)
                 #endif
                 if !project.notes.isEmpty { Text(project.notes).foregroundStyle(.secondary).lineLimit(2) }
                 HStack {
@@ -341,15 +354,9 @@ struct ProjectBoardView: View {
         #if os(iOS)
         .navigationTitle(project.name)
         #endif
-        .toolbar {
-            Menu {
-                Button("New Task") { editor = .init() }
-                    .keyboardShortcut("n", modifiers: .command)
-                Divider()
-                Button("Edit Project", action: editProject)
-                Button("Delete Project…", role: .destructive, action: deleteProject)
-            } label: { Label("Project Options", systemImage: "ellipsis.circle") }
-        }
+        #if os(iOS)
+        .toolbar { projectOptions }
+        #endif
         .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
         .sheet(item: $editor) { TaskEditor(project: project, task: $0.task, initialStatus: $0.status) }
         .confirmationDialog("Delete task?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
@@ -362,6 +369,17 @@ struct ProjectBoardView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
+    private var projectOptions: some View {
+        Menu {
+            Button("New Task") { editor = .init() }
+                .keyboardShortcut("n", modifiers: .command)
+            Divider()
+            Button("Edit Project", action: editProject)
+            Button("Delete Project…", role: .destructive, action: deleteProject)
+        } label: { Label("Project Options", systemImage: "ellipsis.circle") }
+            .labelStyle(.iconOnly)
+    }
+
     private func column(_ status: TaskStatus, width: CGFloat, height: CGFloat) -> some View {
         let tasks = project.taskList.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
         return VStack(alignment: .leading, spacing: 12) {

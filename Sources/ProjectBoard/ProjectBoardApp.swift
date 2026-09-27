@@ -23,6 +23,7 @@ struct ProjectBoardApp: App {
         WindowGroup {
             if let container {
                 AppRootView().modelContainer(container).environmentObject(SyncStatus.shared)
+
             } else {
                 ContentUnavailableView {
                     Label("Couldn’t open your projects", systemImage: "externaldrive.badge.exclamationmark")
@@ -34,7 +35,7 @@ struct ProjectBoardApp: App {
             }
         }
         #if os(macOS)
-        .windowToolbarStyle(.unified(showsTitle: false))
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 850)
         .commands { CommandGroup(replacing: .newItem) {} }
         #endif
