@@ -9,7 +9,6 @@ struct ContentView: View {
     @Query(sort: \Project.createdAt) private var projects: [Project]
     @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
     @AppStorage("collapsedAreas") private var collapsedAreas = ""
-    @AppStorage("projectRowOverrides") private var projectRowOverrides = ""
     @State private var linkedTask: BoardTask?
     @State private var showingProfile = false
     @State private var areaEditor: AreaEditRequest?
@@ -146,37 +145,12 @@ struct ContentView: View {
         }.buttonStyle(.plain)
             .accessibilityLabel("\(isCollapsed(key) ? "Expand" : "Collapse") \(name)")
     }
-    private func isCompact(_ project: Project) -> Bool {
-        let overridden = projectRowOverrides.split(separator: ",").contains(Substring(project.id.uuidString))
-        #if os(iOS)
-        return !overridden
-        #else
-        return overridden
-        #endif
-    }
     private func projectRow(_ project: Project) -> some View {
         NavigationLink(value: project.id) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(project.name).font(isCompact(project) ? .body : .headline)
-                    Spacer()
-                    Button { toggle(project.id.uuidString, in: &projectRowOverrides) } label: {
-                        Image(systemName: isCompact(project) ? "chevron.down" : "chevron.up").font(.caption)
-                    }.buttonStyle(.borderless)
-                        .accessibilityLabel(isCompact(project) ? "Show project progress" : "Hide project progress")
-                }
-                if !isCompact(project) {
-                    HStack {
-                        ProgressView(value: project.progress).frame(width: 90)
-                        Text(project.progress, format: .percent.precision(.fractionLength(0)))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }.padding(.vertical, isCompact(project) ? 0 : 5)
+            Text(project.name).font(.body).padding(.vertical, 2)
         }
         .tag(project.id)
         .contextMenu {
-            Button(isCompact(project) ? "Show Project Progress" : "Compact Project Row") { toggle(project.id.uuidString, in: &projectRowOverrides) }
             Button("Edit Project…") { projectEditor = .init(project: project) }
             Menu("Move to Area") {
                 Button("Unassigned") { project.area = nil; saveChanges() }

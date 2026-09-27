@@ -84,7 +84,7 @@ struct ProfileSettingsView: View {
                     }
                 }
                 Section("iCloud") {
-                    Text("Your stage names and accent color sync between Mac and iPhone when both use an iCloud build. Area collapse and project row size stay specific to each device.")
+                    Text("Your stage names and accent color sync between Mac and iPhone when both use an iCloud build. Area collapse stays specific to each device.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Storage & Sync…") { showingSync = true }
                 }

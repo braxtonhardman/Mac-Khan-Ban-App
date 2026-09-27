@@ -36,8 +36,8 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 - Right-click an empty part of the sidebar and choose **New Area…**, or use **Create → New Area**. Areas group related projects, such as Work, Personal, or Learning.
 - Right-click or long-press a project for **Move to Area**, or select its area in the project editor.
 - Right-click or long-press an area heading to rename it, create a project there, or remove it. Removing an area keeps its projects and tasks in **Unassigned**.
-- Click an area heading's chevron to collapse/expand it. A project's chevron hides/shows its progress bar. The project context menu offers the same compact-row option.
-- iPhone rows start compact. Expansion preferences persist independently on each device.
+- Click an area heading's chevron to collapse/expand it. Project rows show names only; project progress appears above the selected board.
+- Area expansion preferences persist independently on each device.
 
 ## Tasks
 
@@ -57,7 +57,7 @@ The top-right profile button opens shared board preferences:
 - Choose red, orange, yellow, green, teal, blue, purple, or pink as the app accent.
 - Save to apply changes. These preferences persist in SwiftData and sync in iCloud builds.
 - If two devices independently create a profile while offline, the newest saved profile is selected after sync; there is no database uniqueness constraint. Simultaneous edits remain subject to CloudKit merge behavior.
-- Area collapse and compact project rows remain local display preferences.
+- Area collapse remains a local display preference.
 
 ## Apple Calendar deadlines
 
@@ -115,6 +115,7 @@ Xcode compiles the core directly into both apps; Swift Package Manager builds it
 ## Validation notes
 
 - Ten automated tests cover progress, tags, checklist encoding, DST-safe calendar dates, persistence, area lifecycle, upgrades from V1 and Areas schemas, profile validation, and profile persistence/offline duplicate selection.
-- Mac UI smoke checks cover existing data after upgrade, Area creation/moving/collapse, and compact project rows.
+- Mac UI smoke checks cover existing data after upgrade, Area creation/moving/collapse, and the simplified project-name sidebar.
 - iCloud needs signed builds and an available Apple account. A successful build and account check do not establish that data has reached a second device.
 - Real-device sync, Calendar event creation after permission, and distribution remain separate manual checks. Use your own Mac/iPhone with the same Apple account to complete the sync checklist above.
+- Signed Mac and iPhone simulator builds pass. The Mac profile/settings and simplified sidebar were checked in the running app. The Mac reports an available iCloud account and starts CloudKit activity. Simulator installation stalled during runtime validation, so no iPhone runtime or two-device sync pass is claimed.
