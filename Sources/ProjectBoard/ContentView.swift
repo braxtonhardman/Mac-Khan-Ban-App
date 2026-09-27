@@ -197,6 +197,7 @@ struct ProjectBoardView: View {
     let editProject: () -> Void
     let deleteProject: () -> Void
     @State private var editor: TaskEditRequest?
+    @State private var calendarTask: BoardTask?
     @State private var deleting: BoardTask?
     @State private var error: String?
 
@@ -230,6 +231,7 @@ struct ProjectBoardView: View {
                 Button("Delete Project…", role: .destructive, action: deleteProject)
             } label: { Label("Project Options", systemImage: "ellipsis.circle") }
         }
+        .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
         .sheet(item: $editor) { TaskEditor(project: project, task: $0.task, initialStatus: $0.status) }
         .confirmationDialog("Delete task?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete Task", role: .destructive) {
@@ -259,6 +261,8 @@ struct ProjectBoardView: View {
                             .draggable(task.id.uuidString)
                             .contextMenu {
                                 Button("Edit Task") { editor = .init(task: task) }
+                                Button("Add or Update Deadline in Calendar…") { calendarTask = task }
+                                    .disabled(task.dueDate == nil)
                                 Menu("Move To") {
                                     ForEach(TaskStatus.allCases) { target in
                                         Button(target.title) { move(task, to: target) }.disabled(task.status == target)

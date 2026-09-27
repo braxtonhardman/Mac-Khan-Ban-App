@@ -56,7 +56,11 @@ struct TaskEditor: View {
                 }
                 Section("Details") {
                     Toggle("Due date", isOn: $hasDueDate)
-                    if hasDueDate { DatePicker("Due", selection: $dueDate, displayedComponents: .date) }
+                    if hasDueDate {
+                        DatePicker("Due", selection: $dueDate, displayedComponents: .date)
+                        Text("After saving, right-click the card and choose Add or Update Deadline in Calendar.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     TextField("Tags, separated by commas", text: $tags)
                 }
                 Section("Checklist") {
