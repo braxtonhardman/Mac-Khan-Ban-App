@@ -52,7 +52,9 @@ struct TaskEditor: View {
                     }
                 }
                 Section("Description") {
-                    TextEditor(text: $details).frame(minHeight: 85)
+                    TextEditor(text: $details)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 85)
                         .accessibilityLabel("Task description")
                 }
                 Section("Details") {

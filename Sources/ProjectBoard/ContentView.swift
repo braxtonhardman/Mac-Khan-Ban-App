@@ -268,7 +268,9 @@ struct ProjectEditor: View {
                 ForEach(areas) { Text($0.name).tag(Optional($0.id)) }
             }
             Text("Description").font(.headline)
-            TextEditor(text: $notes).frame(height: 100).border(.quaternary)
+            TextEditor(text: $notes)
+                .scrollContentBackground(.hidden)
+                .frame(height: 100).border(.quaternary)
             if let error { Text(error).foregroundStyle(.red) }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
