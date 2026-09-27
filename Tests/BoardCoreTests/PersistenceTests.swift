@@ -3,6 +3,63 @@ import SwiftData
 @testable import BoardCore
 
 final class PersistenceTests: XCTestCase {
+    @MainActor func testProfilePersistsAndResolvesOfflineDuplicates() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("profile.store")
+        func openStore() throws -> ModelContainer {
+            let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
+            return try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+        }
+        do {
+            let container = try openStore()
+            let context = ModelContext(container)
+            let older = AppProfile(stageNames: TaskStatus.allCases.map(\.title), accent: .blue)
+            older.updatedAt = Date(timeIntervalSince1970: 100)
+            let newer = AppProfile(stageNames: ["Ideas", "Next", "Active", "Waiting", "Shipped"], accent: .purple)
+            newer.updatedAt = Date(timeIntervalSince1970: 200)
+            context.insert(older)
+            context.insert(newer)
+            try StoreWriter.save(context)
+        }
+        let container = try openStore()
+        let context = ModelContext(container)
+        let profiles = try context.fetch(FetchDescriptor<AppProfile>())
+        let current = try XCTUnwrap(AppProfile.current(in: profiles))
+        XCTAssertEqual(current.appearance.title(for: .done), "Shipped")
+        XCTAssertEqual(current.appearance.accent, .purple)
+        XCTAssertEqual(AppProfile.current(in: profiles.reversed())?.id, current.id)
+    }
+
+    @MainActor func testUpgradeFromAreasSchemaToCloudSchema() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("areas.store")
+        do {
+            let schema = Schema([LegacyAreaModels.Project.self, LegacyAreaModels.BoardTask.self, LegacyAreaModels.ProjectArea.self])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+            let context = ModelContext(container)
+            let area = LegacyAreaModels.ProjectArea(name: "Personal")
+            let project = LegacyAreaModels.Project(name: "Preserve me")
+            context.insert(area)
+            context.insert(project)
+            project.area = area
+            let task = LegacyAreaModels.BoardTask(title: "Deadline", project: project)
+            task.dueDate = Date(timeIntervalSince1970: 1800000000)
+            context.insert(task)
+            try context.save()
+        }
+        let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
+        let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)])
+        let context = ModelContext(container)
+        let project = try XCTUnwrap(context.fetch(FetchDescriptor<Project>()).first)
+        XCTAssertEqual(project.name, "Preserve me")
+        XCTAssertEqual(project.area?.name, "Personal")
+        XCTAssertEqual(project.taskList.first?.dueDate, Date(timeIntervalSince1970: 1800000000))
+    }
+
     @MainActor func testUpgradeAndAreaLifecyclePreserveProjectsAndTasks() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -22,7 +79,7 @@ final class PersistenceTests: XCTestCase {
             try context.save()
         }
         func openStore() throws -> ModelContainer {
-            let schema = Schema([Project.self, BoardTask.self, ProjectArea.self])
+            let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
             return try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url)])
         }
         do {
@@ -31,8 +88,8 @@ final class PersistenceTests: XCTestCase {
             let project = try XCTUnwrap(context.fetch(FetchDescriptor<Project>()).first)
             XCTAssertEqual(project.id, projectID)
             XCTAssertNil(project.area)
-            XCTAssertEqual(project.tasks.first?.title, "Existing task")
-            XCTAssertEqual(project.tasks.first?.checklist.first?.title, "Keep me")
+            XCTAssertEqual(project.taskList.first?.title, "Existing task")
+            XCTAssertEqual(project.taskList.first?.checklist.first?.title, "Keep me")
             let area = ProjectArea(name: "Work")
             context.insert(area)
             project.area = area
@@ -44,7 +101,7 @@ final class PersistenceTests: XCTestCase {
             let project = try XCTUnwrap(context.fetch(FetchDescriptor<Project>()).first)
             let area = try XCTUnwrap(project.area)
             XCTAssertEqual(area.name, "Work")
-            XCTAssertEqual(area.projects.map(\.id), [projectID])
+            XCTAssertEqual(area.projectList.map(\.id), [projectID])
             area.name = "Personal"
             try StoreWriter.save(context)
         }
@@ -72,7 +129,7 @@ final class PersistenceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("test.store")
         func openStore() throws -> ModelContainer {
-            let schema = Schema([Project.self, BoardTask.self, ProjectArea.self])
+            let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
             return try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url)])
         }
         let projectID: UUID
@@ -97,7 +154,7 @@ final class PersistenceTests: XCTestCase {
         let project = try XCTUnwrap(context.fetch(FetchDescriptor<Project>()).first)
         XCTAssertEqual(project.id, projectID)
         XCTAssertEqual(project.progress, 1)
-        let task = try XCTUnwrap(project.tasks.first)
+        let task = try XCTUnwrap(project.taskList.first)
         XCTAssertEqual(task.status, .done)
         XCTAssertEqual(task.priority, .urgent)
         XCTAssertEqual(task.details, "Release notes")

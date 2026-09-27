@@ -5,6 +5,7 @@ import BoardCore
 #endif
 
 struct TaskEditor: View {
+    @Environment(\.boardAppearance) private var appearance
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     let project: Project
@@ -44,7 +45,7 @@ struct TaskEditor: View {
                 Section("Task") {
                     TextField("Title", text: $title)
                     Picker("Status", selection: $status) {
-                        ForEach(TaskStatus.allCases) { Text($0.title).tag($0) }
+                        ForEach(TaskStatus.allCases) { Text(appearance.title(for: $0)).tag($0) }
                     }
                     Picker("Priority", selection: $priority) {
                         ForEach(TaskPriority.allCases) { Text($0.title).tag($0) }

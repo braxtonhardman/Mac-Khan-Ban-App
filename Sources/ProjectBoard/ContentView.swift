@@ -10,6 +10,8 @@ struct ContentView: View {
     @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
     @AppStorage("collapsedAreas") private var collapsedAreas = ""
     @AppStorage("projectRowOverrides") private var projectRowOverrides = ""
+    @State private var linkedTask: BoardTask?
+    @State private var showingProfile = false
     @State private var areaEditor: AreaEditRequest?
     @State private var removingArea: ProjectArea?
     @State private var selection: UUID?
@@ -30,7 +32,7 @@ struct ContentView: View {
                     Section {
                         if !isCollapsed(area.id.uuidString) {
                             ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
-                            if area.projects.isEmpty {
+                            if area.projectList.isEmpty {
                                 Text("No projects yet").font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -48,18 +50,21 @@ struct ContentView: View {
             }
             .contextMenu {
                 Button("New Area…") { areaEditor = .init(area: nil) }
-                Button("New Project…") { projectEditor = .init(project: nil) }
+                Button("New Project…") { projectEditor = .init(project: nil) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
             .navigationTitle("ProjectBoard")
             .navigationSplitViewColumnWidth(min: 200, ideal: 230)
             .toolbar {
-                Button { areaEditor = .init(area: nil) } label: {
-                    Label("New Area", systemImage: "rectangle.stack.badge.plus")
-                }.help("New Area")
-                Button { projectEditor = .init(project: nil) } label: {
-                    Label("New Project", systemImage: "folder.badge.plus")
-                }.help("New Project").keyboardShortcut("n", modifiers: [.command, .shift])
+                ToolbarItem(placement: .automatic) {
+                    Menu {
+                        Button("New Project…") { projectEditor = .init(project: nil) }
+                            .keyboardShortcut("n", modifiers: [.command, .shift])
+                        Button("New Area…") { areaEditor = .init(area: nil) }
+                    } label: { Label("Create Project or Area", systemImage: "plus.rectangle.on.folder") }
+                        .help("Create Project or Area")
+                }
             }
+
         } detail: {
             if let selected {
                 ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected })
@@ -74,6 +79,12 @@ struct ContentView: View {
                 }
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle") }
+                    .help("Profile & Settings")
+            }
+        }
         .modifier(MainWindowSizing())
         .onAppear {
             #if os(macOS)
@@ -83,11 +94,21 @@ struct ContentView: View {
         .sheet(item: $projectEditor) { request in
             ProjectEditor(project: request.project, initialArea: request.area) { selection = $0 }
         }
+        .onOpenURL { url in
+            guard url.scheme == "projectboard", url.host == "task", let id = UUID(uuidString: url.lastPathComponent),
+                  let task = projects.flatMap(\.taskList).first(where: { $0.id == id }) else { return }
+            selection = task.project?.id
+            linkedTask = task
+        }
+        .sheet(item: $linkedTask) { task in
+            if let project = task.project { TaskEditor(project: project, task: task, initialStatus: task.status) }
+        }
+        .sheet(isPresented: $showingProfile) { ProfileSettingsView() }
         .sheet(item: $areaEditor) { AreaEditor(area: $0.area) }
         .confirmationDialog("Remove \(removingArea?.name ?? "area")?", isPresented: Binding(get: { removingArea != nil }, set: { if !$0 { removingArea = nil } })) {
             Button("Remove Area") {
                 guard let area = removingArea else { return }
-                for project in area.projects { project.area = nil }
+                for project in area.projectList { project.area = nil }
                 context.delete(area)
                 saveChanges()
                 removingArea = nil
@@ -234,6 +255,7 @@ struct TaskEditRequest: Identifiable {
 }
 
 struct ProjectBoardView: View {
+    @Environment(\.boardAppearance) private var appearance
     @Environment(\.modelContext) private var context
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -261,14 +283,14 @@ struct ProjectBoardView: View {
                 HStack {
                     ProgressView(value: project.progress).frame(width: compactLayout ? 65 : 160)
                     Text(project.progress, format: .percent.precision(.fractionLength(0))).font(.headline)
-                    Text("· \(project.tasks.filter { $0.status == .done }.count) of \(project.tasks.count) tasks complete")
+                    Text("· \(project.taskList.filter { $0.status == .done }.count) of \(project.taskList.count) tasks complete")
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
             }.padding(20)
             if compactLayout {
                 Picker("Column", selection: $mobileStatus) {
-                    ForEach(TaskStatus.allCases) { Text($0.title).tag($0) }
+                    ForEach(TaskStatus.allCases) { Text(appearance.title(for: $0)).tag($0) }
                 }.pickerStyle(.menu).padding(.horizontal, 20)
             }
             Divider()
@@ -302,14 +324,14 @@ struct ProjectBoardView: View {
         } message: { Text(error ?? "") }
     }
     private func column(_ status: TaskStatus) -> some View {
-        let tasks = project.tasks.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
+        let tasks = project.taskList.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(status.title, systemImage: status.symbol).font(.headline)
+                Label(appearance.title(for: status), systemImage: status.symbol).font(.headline)
                 Text("\(tasks.count)").foregroundStyle(.secondary)
                 Spacer()
                 Button { editor = .init(status: status) } label: { Image(systemName: "plus") }
-                    .buttonStyle(.borderless).help("Add task to \(status.title)")
+                    .buttonStyle(.borderless).help("Add task to \(appearance.title(for: status))")
             }
             ScrollView {
                 LazyVStack(spacing: 10) {
@@ -323,7 +345,7 @@ struct ProjectBoardView: View {
                                     .disabled(task.dueDate == nil)
                                 Menu("Move To") {
                                     ForEach(TaskStatus.allCases) { target in
-                                        Button(target.title) { move(task, to: target) }.disabled(task.status == target)
+                                        Button(appearance.title(for: target)) { move(task, to: target) }.disabled(task.status == target)
                                     }
                                 }
                                 Button("Delete Task…", role: .destructive) { deleting = task }
@@ -342,7 +364,7 @@ struct ProjectBoardView: View {
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { values, _ in
             let ids = Set(values.compactMap(UUID.init(uuidString:)))
-            let matches = project.tasks.filter { ids.contains($0.id) }
+            let matches = project.taskList.filter { ids.contains($0.id) }
             guard !matches.isEmpty else { return false }
             for task in matches { task.status = status; task.updatedAt = Date() }
             return save()

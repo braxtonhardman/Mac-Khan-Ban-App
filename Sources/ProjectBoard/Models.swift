@@ -6,11 +6,12 @@ import BoardCore
 
 @Model
 final class ProjectArea {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var createdAt: Date
+    var id: UUID = UUID()
+    var name: String = ""
+    var createdAt: Date = Date()
     @Relationship(deleteRule: .nullify, inverse: \Project.area)
-    var projects: [Project] = []
+    var projects: [Project]? = []
+    var projectList: [Project] { projects ?? [] }
 
     init(name: String) {
         id = UUID()
@@ -21,13 +22,14 @@ final class ProjectArea {
 
 @Model
 final class Project {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var notes: String
+    var id: UUID = UUID()
+    var name: String = ""
+    var notes: String = ""
     var area: ProjectArea?
-    var createdAt: Date
+    var createdAt: Date = Date()
     @Relationship(deleteRule: .cascade, inverse: \BoardTask.project)
-    var tasks: [BoardTask] = []
+    var tasks: [BoardTask]? = []
+    var taskList: [BoardTask] { tasks ?? [] }
 
     init(name: String, notes: String = "") {
         id = UUID()
@@ -35,21 +37,21 @@ final class Project {
         self.notes = notes
         createdAt = Date()
     }
-    var progress: Double { BoardRules.progress(statuses: tasks.map(\.status)) }
+    var progress: Double { BoardRules.progress(statuses: taskList.map(\.status)) }
 }
 
 @Model
 final class BoardTask {
-    @Attribute(.unique) var id: UUID
-    var title: String
-    var details: String
-    var statusValue: String
-    var priorityValue: Int
+    var id: UUID = UUID()
+    var title: String = ""
+    var details: String = ""
+    var statusValue: String = "backlog"
+    var priorityValue: Int = 1
     var dueDate: Date?
-    var tags: [String]
-    var checklist: [ChecklistItem]
-    var createdAt: Date
-    var updatedAt: Date
+    var tags: [String] = []
+    var checklist: [ChecklistItem] = []
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
     var project: Project?
 
     init(title: String, status: TaskStatus = .backlog, project: Project? = nil) {
@@ -71,6 +73,30 @@ final class BoardTask {
     var priority: TaskPriority {
         get { TaskPriority(rawValue: priorityValue) ?? .normal }
         set { priorityValue = newValue.rawValue }
+    }
+}
+
+/// A profile is saved only after an explicit settings edit, avoiding startup-created duplicates.
+/// If offline devices independently create profiles, the newest saved profile wins deterministically.
+@Model
+final class AppProfile {
+    var id: UUID = UUID()
+    var updatedAt: Date = Date()
+    var stageNames: [String] = ["Backlog", "Planned", "In Progress", "Blocked", "Done"]
+    var accentName: String = "blue"
+
+    init(stageNames: [String], accent: AccentChoice) {
+        self.stageNames = stageNames
+        accentName = accent.rawValue
+    }
+    var appearance: BoardAppearance {
+        BoardAppearance(stageNames: stageNames, accent: AccentChoice(rawValue: accentName) ?? .blue)
+    }
+    static func current(in profiles: [AppProfile]) -> AppProfile? {
+        profiles.sorted {
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }.first
     }
 }
 

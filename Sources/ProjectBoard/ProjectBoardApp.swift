@@ -7,8 +7,11 @@ struct ProjectBoardApp: App {
     private let startupError: String?
 
     init() {
+        _ = SyncStatus.shared
         do {
-            container = try ModelContainer(for: Project.self, BoardTask.self, ProjectArea.self)
+            let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
+            let configuration = ModelConfiguration(schema: schema, cloudKitDatabase: SyncStatus.isCloudBuild ? .private(SyncStatus.containerIdentifier) : .none)
+            container = try ModelContainer(for: schema, configurations: [configuration])
             container?.mainContext.autosaveEnabled = false
             startupError = nil
         } catch {
@@ -19,7 +22,7 @@ struct ProjectBoardApp: App {
     var body: some Scene {
         WindowGroup {
             if let container {
-                ContentView().modelContainer(container)
+                AppRootView().modelContainer(container).environmentObject(SyncStatus.shared)
             } else {
                 ContentUnavailableView {
                     Label("Couldn’t open your projects", systemImage: "externaldrive.badge.exclamationmark")
