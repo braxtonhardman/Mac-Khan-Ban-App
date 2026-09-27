@@ -192,7 +192,10 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 7) {
                 HStack {
                     Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
+                        .font(.caption.weight(.semibold))
                     Text(name)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
                     Spacer()
                 }
                 Rectangle()
