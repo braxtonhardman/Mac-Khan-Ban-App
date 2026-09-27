@@ -1,30 +1,14 @@
 import Foundation
 import SwiftData
-#if SWIFT_PACKAGE
 import BoardCore
-#endif
 
-@Model
-final class ProjectArea {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var createdAt: Date
-    @Relationship(deleteRule: .nullify, inverse: \Project.area)
-    var projects: [Project] = []
-
-    init(name: String) {
-        id = UUID()
-        self.name = name
-        createdAt = Date()
-    }
-}
-
+// Frozen V1 schema used to verify upgrades preserve existing stores.
+enum LegacyModels {
 @Model
 final class Project {
     @Attribute(.unique) var id: UUID
     var name: String
     var notes: String
-    var area: ProjectArea?
     var createdAt: Date
     @Relationship(deleteRule: .cascade, inverse: \BoardTask.project)
     var tasks: [BoardTask] = []
@@ -74,11 +58,4 @@ final class BoardTask {
     }
 }
 
-/// All changes use explicit saves so storage failures can be reported and rolled back.
-@MainActor
-enum StoreWriter {
-    static func save(_ context: ModelContext) throws {
-        do { try context.save() }
-        catch { context.rollback(); throw error }
-    }
 }

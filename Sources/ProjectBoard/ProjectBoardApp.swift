@@ -8,7 +8,7 @@ struct ProjectBoardApp: App {
 
     init() {
         do {
-            container = try ModelContainer(for: Project.self, BoardTask.self)
+            container = try ModelContainer(for: Project.self, BoardTask.self, ProjectArea.self)
             container?.mainContext.autosaveEnabled = false
             startupError = nil
         } catch {

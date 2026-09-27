@@ -20,6 +20,7 @@ open DerivedData/Build/Products/Debug/ProjectBoard.app
 ## Use
 
 - Create a project from the sidebar toolbar (**Shift-Command-N**).
+- Right-click the sidebar and choose **New Area…** to group projects. Right-click a project for **Move to Area**, or choose its area in the project editor. Right-click an area heading to rename it, create a project there, or remove it. Removing an area keeps its projects and tasks in **Unassigned**. Areas persist across restarts; existing V1 projects appear in Unassigned after the automatic storage upgrade.
 - Select a project and add tasks with **Command-N**, or use a column's plus button.
 - Click a card to edit its title, description, status, priority, due date, comma-separated tags, and checklist.
 - Drag cards between Backlog, Planned, In Progress, Blocked, and Done. The card context menu also provides **Move To**.

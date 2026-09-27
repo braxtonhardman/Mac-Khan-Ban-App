@@ -7,6 +7,9 @@ import BoardCore
 struct ContentView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Project.createdAt) private var projects: [Project]
+    @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
+    @State private var areaEditor: AreaEditRequest?
+    @State private var removingArea: ProjectArea?
     @State private var selection: UUID?
     @State private var projectEditor: ProjectEditRequest?
     @State private var deleting: Project?
@@ -16,27 +19,41 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                Section("Projects") {
-                    ForEach(projects) { project in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(project.name).font(.headline)
-                            HStack {
-                                ProgressView(value: project.progress).frame(width: 90)
-                                Text(project.progress, format: .percent.precision(.fractionLength(0)))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 5).tag(project.id)
-                        .contextMenu {
-                            Button("Edit Project") { projectEditor = .init(project: project) }
-                            Button("Delete Project…", role: .destructive) { deleting = project }
-                        }
+                Section("Unassigned") {
+                    ForEach(projects.filter { $0.area == nil }) { project in
+                        projectRow(project)
                     }
                 }
+                ForEach(areas) { area in
+                    Section {
+                        ForEach(projects.filter { $0.area?.id == area.id }) { project in
+                            projectRow(project)
+                        }
+                        if area.projects.isEmpty {
+                            Text("No projects yet").font(.caption).foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text(area.name)
+                            .contextMenu {
+                                Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
+                                Button("Rename Area…") { areaEditor = .init(area: area) }
+                                Button("Remove Area…") { removingArea = area }
+                                Divider()
+                                Button("New Area…") { areaEditor = .init(area: nil) }
+                            }
+                    }
+                }
+            }
+            .contextMenu {
+                Button("New Area…") { areaEditor = .init(area: nil) }
+                Button("New Project…") { projectEditor = .init(project: nil) }
             }
             .navigationTitle("ProjectBoard")
             .navigationSplitViewColumnWidth(min: 200, ideal: 230)
             .toolbar {
+                Button { areaEditor = .init(area: nil) } label: {
+                    Label("New Area", systemImage: "rectangle.stack.badge.plus")
+                }.help("New Area")
                 Button { projectEditor = .init(project: nil) } label: {
                     Label("New Project", systemImage: "folder.badge.plus")
                 }.help("New Project").keyboardShortcut("n", modifiers: [.command, .shift])
@@ -58,8 +75,18 @@ struct ContentView: View {
         .frame(minWidth: 900, minHeight: 600)
         .onAppear { if selection == nil { selection = projects.first?.id } }
         .sheet(item: $projectEditor) { request in
-            ProjectEditor(project: request.project) { selection = $0 }
+            ProjectEditor(project: request.project, initialArea: request.area) { selection = $0 }
         }
+        .sheet(item: $areaEditor) { AreaEditor(area: $0.area) }
+        .confirmationDialog("Remove \(removingArea?.name ?? "area")?", isPresented: Binding(get: { removingArea != nil }, set: { if !$0 { removingArea = nil } })) {
+            Button("Remove Area") {
+                guard let area = removingArea else { return }
+                for project in area.projects { project.area = nil }
+                context.delete(area)
+                saveChanges()
+                removingArea = nil
+            }
+        } message: { Text("Projects and their tasks will be kept in Unassigned.") }
         .confirmationDialog("Delete \(deleting?.name ?? "project") and all its tasks?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete Project", role: .destructive) {
                 guard let project = deleting else { return }
@@ -76,24 +103,55 @@ struct ContentView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
+    private func projectRow(_ project: Project) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(project.name).font(.headline)
+            HStack {
+                ProgressView(value: project.progress).frame(width: 90)
+                Text(project.progress, format: .percent.precision(.fractionLength(0)))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 5).tag(project.id)
+        .contextMenu {
+            Button("Edit Project…") { projectEditor = .init(project: project) }
+            Menu("Move to Area") {
+                Button("Unassigned") { project.area = nil; saveChanges() }
+                ForEach(areas) { area in
+                    Button(area.name) { project.area = area; saveChanges() }
+                }
+            }
+            Button("New Area…") { areaEditor = .init(area: nil) }
+            Button("Delete Project…", role: .destructive) { deleting = project }
+        }
+    }
+    private func saveChanges() {
+        do { try StoreWriter.save(context) }
+        catch { self.error = error.localizedDescription }
+    }
+
 }
 
 private struct ProjectEditRequest: Identifiable {
     let id = UUID()
     let project: Project?
+    var area: ProjectArea? = nil
 }
 
 struct ProjectEditor: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     let project: Project?
+    @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
+    @State private var areaID: UUID?
     let onSave: (UUID) -> Void
     @State private var name: String
     @State private var notes: String
     @State private var error: String?
 
-    init(project: Project?, onSave: @escaping (UUID) -> Void) {
+    init(project: Project?, initialArea: ProjectArea? = nil, onSave: @escaping (UUID) -> Void) {
         self.project = project
+        _areaID = State(initialValue: project?.area?.id ?? initialArea?.id)
         self.onSave = onSave
         _name = State(initialValue: project?.name ?? "")
         _notes = State(initialValue: project?.notes ?? "")
@@ -102,6 +160,10 @@ struct ProjectEditor: View {
         VStack(alignment: .leading, spacing: 16) {
             Text(project == nil ? "New Project" : "Edit Project").font(.title2.bold())
             TextField("Project name", text: $name)
+            Picker("Area", selection: $areaID) {
+                Text("Unassigned").tag(nil as UUID?)
+                ForEach(areas) { Text($0.name).tag(Optional($0.id)) }
+            }
             Text("Description").font(.headline)
             TextEditor(text: $notes).frame(height: 100).border(.quaternary)
             if let error { Text(error).foregroundStyle(.red) }
@@ -113,6 +175,7 @@ struct ProjectEditor: View {
                     if project == nil { context.insert(item) }
                     item.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     item.notes = notes
+                    item.area = areas.first { $0.id == areaID }
                     do { try StoreWriter.save(context); onSave(item.id); dismiss() }
                     catch { self.error = error.localizedDescription }
                 }.keyboardShortcut(.defaultAction)
@@ -262,5 +325,50 @@ struct TaskCard: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct AreaEditRequest: Identifiable {
+    let id = UUID()
+    let area: ProjectArea?
+}
+
+private struct AreaEditor: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Query private var areas: [ProjectArea]
+    let area: ProjectArea?
+    @State private var name: String
+    @State private var error: String?
+
+    init(area: ProjectArea?) {
+        self.area = area
+        _name = State(initialValue: area?.name ?? "")
+    }
+    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var duplicate: Bool {
+        areas.contains { $0.id != area?.id && $0.name.localizedCaseInsensitiveCompare(cleanName) == .orderedSame }
+            || cleanName.localizedCaseInsensitiveCompare("Unassigned") == .orderedSame
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(area == nil ? "New Area" : "Rename Area").font(.title2.bold())
+            TextField("Area name", text: $name)
+            Text("Group related projects, such as Work, Personal, or Learning.")
+                .font(.caption).foregroundStyle(.secondary)
+            if duplicate { Text("Choose a different area name.").foregroundStyle(.red) }
+            if let error { Text(error).foregroundStyle(.red) }
+            HStack {
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Save") {
+                    let item = area ?? ProjectArea(name: cleanName)
+                    if area == nil { context.insert(item) }
+                    item.name = cleanName
+                    do { try StoreWriter.save(context); dismiss() }
+                    catch { self.error = error.localizedDescription }
+                }.keyboardShortcut(.defaultAction).disabled(cleanName.isEmpty || duplicate)
+            }
+        }.padding(24).frame(width: 440)
     }
 }
