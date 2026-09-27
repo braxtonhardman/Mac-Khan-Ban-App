@@ -79,6 +79,9 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            #if os(macOS)
+            ToolbarItem(placement: .automatic) { Spacer() }
+            #endif
             ToolbarItem(placement: .primaryAction) {
                 Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle") }
                     .help("Profile & Settings")
