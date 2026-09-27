@@ -278,9 +278,10 @@ struct ProjectBoardView: View {
         }
         .navigationTitle(project.name)
         .toolbar {
-            Button { editor = .init() } label: { Label("New Task", systemImage: "plus") }
-                .keyboardShortcut("n", modifiers: .command)
             Menu {
+                Button("New Task") { editor = .init() }
+                    .keyboardShortcut("n", modifiers: .command)
+                Divider()
                 Button("Edit Project", action: editProject)
                 Button("Delete Project…", role: .destructive, action: deleteProject)
             } label: { Label("Project Options", systemImage: "ellipsis.circle") }

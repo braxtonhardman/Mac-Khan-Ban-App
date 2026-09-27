@@ -41,7 +41,7 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 
 ## Tasks
 
-- Select a project, then use **New Task** (Command-N on Mac) or a column's plus button.
+- Select a project, then use **… → New Task** (Command-N on Mac) or a column's plus button.
 - Click/tap a card to edit title, description, status, priority, due date, comma-separated tags, and checklist.
 - Drag cards between Backlog, Planned, In Progress, Blocked, and Done. The card context menu also provides **Move To**.
 - On iPhone, a column picker shows one column at a time; use the task editor or long-press **Move To** to change status.
