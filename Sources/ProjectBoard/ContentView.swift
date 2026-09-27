@@ -114,7 +114,7 @@ struct ContentView: View {
                         }
                     }
                     Button { showingProfile = true } label: {
-                        Label("Profile & Settings", systemImage: "person.crop.circle")
+                        Label("Profile & Settings", systemImage: "person.crop.circle").font(.system(size: 22))
                     }
                 }.labelStyle(.iconOnly).padding(20)
             }
@@ -122,7 +122,7 @@ struct ContentView: View {
         #else
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle") }
+                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle").font(.system(size: 22)) }
             }
         }
         #endif
@@ -329,7 +329,7 @@ struct ProjectBoardView: View {
                         Button(action: showSidebar) { Image(systemName: "sidebar.left") }
                             .help("Show Sidebar").accessibilityLabel("Show Sidebar")
                     }
-                    Button(action: showProfile) { Image(systemName: "person.crop.circle") }
+                    Button(action: showProfile) { Image(systemName: "person.crop.circle").font(.system(size: 22)) }
                         .help("Profile & Settings").accessibilityLabel("Profile & Settings")
                     projectOptions
                 }.buttonStyle(.borderless)
@@ -400,6 +400,13 @@ struct ProjectBoardView: View {
             Button("Delete Project…", role: .destructive, action: deleteProject)
         } label: { Label("Project Options", systemImage: "ellipsis.circle") }
             .labelStyle(.iconOnly)
+            #if os(macOS)
+            .scaleEffect(1.6, anchor: .topTrailing)
+            .padding(.leading, 18)
+            .padding(.bottom, 8)
+            #else
+            .font(.system(size: 22))
+            #endif
     }
 
     private func column(_ status: TaskStatus, width: CGFloat, height: CGFloat) -> some View {
