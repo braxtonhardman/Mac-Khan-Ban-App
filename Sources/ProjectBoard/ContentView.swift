@@ -5,6 +5,7 @@ import BoardCore
 #endif
 
 struct ContentView: View {
+    var isFullScreen = false
     @Environment(\.modelContext) private var context
     @Query(sort: \Project.createdAt) private var projects: [Project]
     @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
@@ -72,7 +73,8 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderless)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+                .padding(.top, isFullScreen ? 20 : 10)
+                .padding(.bottom, 16)
             }
             #else
             .toolbar {
@@ -82,18 +84,23 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 230, ideal: 230)
 
         } detail: {
-            if let selected {
-                ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected }, showProfile: { showingProfile = true }, showSidebar: columnVisibility == .detailOnly ? { withAnimation { columnVisibility = .all } } : nil)
-                    .id(selected.id)
-            } else {
-                ContentUnavailableView {
-                    Label("A little structure for your next idea", systemImage: "rectangle.split.3x1")
-                } description: {
-                    Text("Create a project, capture tasks, and move them toward done.")
-                } actions: {
-                    Button("Create Project") { projectEditor = .init(project: nil) }.buttonStyle(.borderedProminent)
+            Group {
+                if let selected {
+                    ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected }, showProfile: { showingProfile = true }, showSidebar: columnVisibility == .detailOnly ? { withAnimation { columnVisibility = .all } } : nil)
+                        .id(selected.id)
+                } else {
+                    ContentUnavailableView {
+                        Label("A little structure for your next idea", systemImage: "rectangle.split.3x1")
+                    } description: {
+                        Text("Create a project, capture tasks, and move them toward done.")
+                    } actions: {
+                        Button("Create Project") { projectEditor = .init(project: nil) }.buttonStyle(.borderedProminent)
+                    }
                 }
             }
+            #if os(macOS)
+            .padding(.top, isFullScreen ? 32 : 0)
+            #endif
         }
         #if os(macOS)
         .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
@@ -182,11 +189,19 @@ struct ContentView: View {
     }
     private func areaHeader(_ name: String, key: String) -> some View {
         Button { toggle(key, in: &collapsedAreas) } label: {
-            HStack {
-                Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
-                Text(name)
-                Spacer()
-            }.contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
+                    Text(name)
+                    Spacer()
+                }
+                Rectangle()
+                    .fill(.secondary.opacity(0.18))
+                    .frame(height: 0.5)
+                    .accessibilityHidden(true)
+            }
+            .padding(.bottom, 5)
+            .contentShape(Rectangle())
         }.buttonStyle(.plain)
             #if os(macOS)
             .padding(.top, 12)
@@ -195,7 +210,7 @@ struct ContentView: View {
     }
     private func projectRow(_ project: Project) -> some View {
         NavigationLink(value: project.id) {
-            Text(project.name).font(.body).padding(.vertical, 2)
+            Text(project.name).font(.body).padding(.vertical, 4)
         }
         .tag(project.id)
         .contextMenu {
@@ -355,6 +370,9 @@ struct ProjectBoardView: View {
                 }
             }
         }
+        #if os(macOS)
+        .background(Color(nsColor: .windowBackgroundColor))
+        #endif
         #if os(iOS)
         .navigationTitle(project.name)
         #endif

@@ -90,11 +90,22 @@ struct SolidTitlebarBackground: NSViewRepresentable {
             guard
                   let close = window.standardWindowButton(.closeButton),
                   let host = close.superview,
-                  host.bounds.height > 0, host.bounds.height < 120,
-                  background.superview !== host else { return }
+                  host.bounds.height > 0 else { return }
+            let needsInstall = background.superview !== host
+            let barHeight: CGFloat = min(host.bounds.height, 32)
+            let frame = NSRect(
+                x: host.bounds.minX,
+                y: host.isFlipped ? host.bounds.minY : host.bounds.maxY - barHeight,
+                width: host.bounds.width,
+                height: barHeight
+            )
+            if background.frame != frame { background.frame = frame }
+            background.clipsToBounds = true
+            // The native host can grow to the full window during restoration.
+            // Keep the opaque backing confined to the title bar.
+            background.autoresizingMask = host.isFlipped ? [.width, .maxYMargin] : [.width, .minYMargin]
+            guard needsInstall else { return }
             background.removeFromSuperview()
-            background.frame = host.bounds
-            background.autoresizingMask = [.width, .height]
             host.addSubview(background, positioned: .above, relativeTo: nil)
             for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
                 if let button = window.standardWindowButton(kind), button.superview === host {
@@ -114,7 +125,7 @@ struct SolidTitlebarBackground: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func draw(_ dirtyRect: NSRect) {
             NSColor.windowBackgroundColor.setFill()
-            dirtyRect.fill()
+            bounds.fill()
         }
         override func viewDidChangeEffectiveAppearance() {
             super.viewDidChangeEffectiveAppearance()
