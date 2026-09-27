@@ -34,7 +34,7 @@ struct ProjectBoardApp: App {
             }
         }
         #if os(macOS)
-        .windowToolbarStyle(.expanded)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1440, height: 850)
         .commands { CommandGroup(replacing: .newItem) {} }
         #endif

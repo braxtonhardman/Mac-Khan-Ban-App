@@ -14,13 +14,14 @@ struct ContentView: View {
     @State private var areaEditor: AreaEditRequest?
     @State private var removingArea: ProjectArea?
     @State private var selection: UUID?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var projectEditor: ProjectEditRequest?
     @State private var deleting: Project?
     @State private var error: String?
 
     private var selected: Project? { projects.first { $0.id == selection } }
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selection) {
                 Section {
                     if !isCollapsed("unassigned") {
@@ -51,18 +52,32 @@ struct ContentView: View {
                 Button("New Area…") { areaEditor = .init(area: nil) }
                 Button("New Project…") { projectEditor = .init(project: nil) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
+            #if os(iOS)
             .navigationTitle("ProjectBoard")
+            #endif
             .navigationSplitViewColumnWidth(min: 200, ideal: 230)
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Menu {
-                        Button("New Project…") { projectEditor = .init(project: nil) }
-                            .keyboardShortcut("n", modifiers: [.command, .shift])
-                        Button("New Area…") { areaEditor = .init(area: nil) }
-                    } label: { Label("Create Project or Area", systemImage: "plus.rectangle.on.folder") }
-                        .help("Create Project or Area")
+            #if os(macOS)
+            .toolbar(removing: .sidebarToggle)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack(spacing: 12) {
+                    Text("Projects").font(.headline)
+                    Spacer()
+                    creationMenu
+                    Button {
+                        withAnimation { columnVisibility = .detailOnly }
+                    } label: { Image(systemName: "sidebar.left") }
+                        .help("Hide Sidebar")
+                        .accessibilityLabel("Hide Sidebar")
                 }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
+            #else
+            .toolbar {
+                ToolbarItem(placement: .automatic) { creationMenu }
+            }
+            #endif
 
         } detail: {
             if let selected {
@@ -80,6 +95,14 @@ struct ContentView: View {
         }
         .toolbar {
             #if os(macOS)
+            if columnVisibility == .detailOnly {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        withAnimation { columnVisibility = .all }
+                    } label: { Label("Show Sidebar", systemImage: "sidebar.left") }
+                        .help("Show Sidebar")
+                }
+            }
             ToolbarItem(placement: .automatic) { Spacer() }
             #endif
             ToolbarItem(placement: .primaryAction) {
@@ -87,6 +110,10 @@ struct ContentView: View {
                     .help("Profile & Settings")
             }
         }
+        #if os(macOS)
+        .padding(.top, 12)
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        #endif
         .modifier(MainWindowSizing())
         .onAppear {
             #if os(macOS)
@@ -132,6 +159,16 @@ struct ContentView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
+    private var creationMenu: some View {
+        Menu {
+            Button("New Project…") { projectEditor = .init(project: nil) }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+            Button("New Area…") { areaEditor = .init(area: nil) }
+        } label: { Label("Create Project or Area", systemImage: "plus.rectangle.on.folder") }
+            .labelStyle(.iconOnly)
+            .help("Create Project or Area")
+    }
+
     private func isCollapsed(_ key: String) -> Bool { collapsedAreas.split(separator: ",").contains(Substring(key)) }
     private func toggle(_ key: String, in value: inout String) {
         var keys = Set(value.split(separator: ",").map(String.init))
@@ -146,6 +183,9 @@ struct ContentView: View {
                 Spacer()
             }.contentShape(Rectangle())
         }.buttonStyle(.plain)
+            #if os(macOS)
+            .padding(.top, 12)
+            #endif
             .accessibilityLabel("\(isCollapsed(key) ? "Expand" : "Collapse") \(name)")
     }
     private func projectRow(_ project: Project) -> some View {
@@ -256,6 +296,12 @@ struct ProjectBoardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
+                #if os(macOS)
+                Text(project.name)
+                    .font(.title2.bold())
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                #endif
                 if !project.notes.isEmpty { Text(project.notes).foregroundStyle(.secondary).lineLimit(2) }
                 HStack {
                     ProgressView(value: project.progress).frame(width: compactLayout ? 65 : 160)
@@ -292,7 +338,9 @@ struct ProjectBoardView: View {
                 }
             }
         }
+        #if os(iOS)
         .navigationTitle(project.name)
+        #endif
         .toolbar {
             Menu {
                 Button("New Task") { editor = .init() }
