@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Semantic system styles keep hierarchy consistent and support iPhone Dynamic Type.
-/// Default Mac sizes: page 17, section/context 15, item/body 13, supporting 12, caption 11.
+/// Default Mac sizes: board 22, page 17, section/context 15, item/body 13, supporting 12, caption 11.
 enum AppTypography {
+    static let boardTitle: Font = .title.bold()
     static let pageTitle: Font = .title2.bold()
     static let sectionTitle: Font = .title3.weight(.semibold)
     static let contextTitle: Font = .title3

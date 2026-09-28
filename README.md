@@ -128,7 +128,8 @@ Xcode compiles the core directly into both apps; Swift Package Manager builds it
 
 | Role | Used for | Default Mac size |
 | --- | --- | --- |
-| Page title | Workspace, board title, sheet titles | 17 pt bold |
+| Board title | Active project name | 22 pt bold |
+| Page title | Workspace, sheet titles | 17 pt bold |
 | Section heading | Areas, board stages, form sections | 15 pt semibold |
 | Context title | Project name alongside a sheet title | 15 pt regular |
 | Item title | Task names, emphasized values | 13 pt semibold |

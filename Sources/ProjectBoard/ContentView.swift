@@ -389,7 +389,7 @@ struct ProjectBoardView: View {
                 #if os(macOS)
                 HStack(alignment: .top, spacing: 16) {
                     Text(project.name)
-                        .font(AppTypography.pageTitle)
+                        .font(AppTypography.boardTitle)
                         .lineLimit(2)
                         .textSelection(.enabled)
                     Spacer()
