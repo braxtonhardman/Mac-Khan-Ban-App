@@ -21,6 +21,8 @@ struct ContentView: View {
     @State private var deleting: Project?
     @State private var error: String?
 
+    private let projectIndent: CGFloat = 28
+
     private var selected: Project? { projects.first { $0.id == selection } }
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -48,6 +50,7 @@ struct ContentView: View {
                         ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
                         if area.projectList.isEmpty {
                             Text("No projects yet").font(AppTypography.caption).foregroundStyle(.secondary)
+                                .padding(.leading, projectIndent)
                         }
                     }
                 }
@@ -200,6 +203,7 @@ struct ContentView: View {
         } label: {
             Image(systemName: "plus")
                 .font(AppTypography.itemTitle)
+                .padding(.leading, projectIndent)
                 .foregroundStyle(.tint)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
@@ -248,6 +252,7 @@ struct ContentView: View {
     private func projectRow(_ project: Project) -> some View {
         NavigationLink(value: project.id) {
             Text(project.name).font(AppTypography.body).padding(.vertical, 4)
+                .padding(.leading, projectIndent)
         }
         .tag(project.id)
         .contextMenu {
