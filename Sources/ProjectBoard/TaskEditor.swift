@@ -40,7 +40,7 @@ struct TaskEditor: View {
             HStack {
                 Text(task == nil ? "New Task" : "Edit Task").font(.title2.bold())
                 Spacer()
-                Text(project.name).foregroundStyle(.secondary).lineLimit(1)
+                Text(project.name).font(.title3).foregroundStyle(.secondary).lineLimit(1)
             }.padding(20)
             Divider()
             Form {
