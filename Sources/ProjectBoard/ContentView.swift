@@ -293,7 +293,34 @@ struct ProjectEditor: View {
         _name = State(initialValue: project?.name ?? "")
         _notes = State(initialValue: project?.notes ?? "")
     }
+    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     var body: some View {
+        #if os(iOS)
+        MobileEditorSheet(title: project == nil ? "New Project" : "Edit Project",
+                          saveTitle: project == nil ? "Create" : "Save",
+                          canSave: !cleanName.isEmpty, save: save) {
+            AppSection("Project name") {
+                TextField("Project name", text: $name, prompt: Text("Enter a project name"))
+                    .textInputAutocapitalization(.sentences)
+                    .accessibilityLabel("Project name")
+            }
+            AppSection("Area") {
+                Picker("Area", selection: $areaID) {
+                    Text("Unassigned").tag(nil as UUID?)
+                    ForEach(areas) { Text($0.name).tag(Optional($0.id)) }
+                }
+                .pickerStyle(.menu)
+            }
+            AppSection("Description") {
+                TextEditor(text: $notes)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 140)
+                    .accessibilityLabel("Project description")
+            }
+            if let error { Text(error).foregroundStyle(.red) }
+        }
+        #else
         VStack(alignment: .leading, spacing: 16) {
             Text(project == nil ? "New Project" : "Edit Project").font(AppTypography.pageTitle)
             TextField("Project name", text: $name)
@@ -309,18 +336,21 @@ struct ProjectEditor: View {
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save") {
-                    let item = project ?? Project(name: "")
-                    if project == nil { context.insert(item) }
-                    item.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    item.notes = notes
-                    item.area = areas.first { $0.id == areaID }
-                    do { try StoreWriter.save(context); onSave(item.id); dismiss() }
-                    catch { self.error = error.localizedDescription }
-                }.keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Save", action: save).keyboardShortcut(.defaultAction)
+                    .disabled(cleanName.isEmpty)
             }
         }.padding(24).modifier(EditorSizing(width: 440))
+        #endif
+    }
+
+    private func save() {
+        let item = project ?? Project(name: "")
+        if project == nil { context.insert(item) }
+        item.name = cleanName
+        item.notes = notes
+        item.area = areas.first { $0.id == areaID }
+        do { try StoreWriter.save(context); onSave(item.id); dismiss() }
+        catch { self.error = error.localizedDescription }
     }
 }
 
@@ -563,6 +593,22 @@ private struct AreaEditor: View {
             || cleanName.localizedCaseInsensitiveCompare("Unassigned") == .orderedSame
     }
     var body: some View {
+        #if os(iOS)
+        MobileEditorSheet(title: area == nil ? "New Area" : "Rename Area",
+                          saveTitle: area == nil ? "Create" : "Save",
+                          canSave: !cleanName.isEmpty && !duplicate, save: save) {
+            AppSection("Area name") {
+                TextField("Area name", text: $name, prompt: Text("Enter an area name"))
+                    .textInputAutocapitalization(.words)
+                    .accessibilityLabel("Area name")
+            }
+            Text("Group related projects, such as Work, Personal, or Learning.")
+                .font(AppTypography.supporting).foregroundStyle(.secondary)
+                .listRowBackground(Color.clear)
+            if duplicate { Text("Choose a different area name.").foregroundStyle(.red) }
+            if let error { Text(error).foregroundStyle(.red) }
+        }
+        #else
         VStack(alignment: .leading, spacing: 16) {
             Text(area == nil ? "New Area" : "Rename Area").font(AppTypography.pageTitle)
             TextField("Area name", text: $name)
@@ -573,15 +619,19 @@ private struct AreaEditor: View {
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save") {
-                    let item = area ?? ProjectArea(name: cleanName)
-                    if area == nil { context.insert(item) }
-                    item.name = cleanName
-                    do { try StoreWriter.save(context); dismiss() }
-                    catch { self.error = error.localizedDescription }
-                }.keyboardShortcut(.defaultAction).disabled(cleanName.isEmpty || duplicate)
+                Button("Save", action: save).keyboardShortcut(.defaultAction)
+                    .disabled(cleanName.isEmpty || duplicate)
             }
         }.padding(24).modifier(EditorSizing(width: 440))
+        #endif
+    }
+
+    private func save() {
+        let item = area ?? ProjectArea(name: cleanName)
+        if area == nil { context.insert(item) }
+        item.name = cleanName
+        do { try StoreWriter.save(context); dismiss() }
+        catch { self.error = error.localizedDescription }
     }
 }
 
@@ -606,3 +656,34 @@ struct EditorSizing: ViewModifier {
         #endif
     }
 }
+
+#if os(iOS)
+/// Native navigation and scrolling form shared by the workspace editors.
+private struct MobileEditorSheet<Content: View>: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let saveTitle: String
+    let canSave: Bool
+    let save: () -> Void
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        NavigationStack {
+            Form { content() }
+                .font(AppTypography.body)
+                .formStyle(.grouped)
+                .scrollDismissesKeyboard(.interactively)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(saveTitle, action: save).disabled(!canSave)
+                    }
+                }
+        }
+    }
+}
+#endif
