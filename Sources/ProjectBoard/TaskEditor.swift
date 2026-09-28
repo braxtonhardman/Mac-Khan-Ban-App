@@ -14,8 +14,9 @@ struct TaskEditor: View {
     @State private var details: String
     @State private var status: TaskStatus
     @State private var priority: TaskPriority
-    @State private var hasDueDate: Bool
-    @State private var dueDate: Date
+    @State private var dueDate: Date?
+    @State private var showingDatePicker = false
+    @State private var proposedDate = Date()
     @State private var tags: String
     @State private var checklist: [ChecklistItem]
     @State private var newItem = ""
@@ -28,8 +29,7 @@ struct TaskEditor: View {
         _details = State(initialValue: task?.details ?? "")
         _status = State(initialValue: task?.status ?? initialStatus)
         _priority = State(initialValue: task?.priority ?? .normal)
-        _hasDueDate = State(initialValue: task?.dueDate != nil)
-        _dueDate = State(initialValue: task?.dueDate ?? Date())
+        _dueDate = State(initialValue: task?.dueDate)
         _tags = State(initialValue: task?.tags.joined(separator: ", ") ?? "")
         _checklist = State(initialValue: task?.checklist ?? [])
     }
@@ -58,9 +58,8 @@ struct TaskEditor: View {
                         .accessibilityLabel("Task description")
                 }
                 Section("Details") {
-                    Toggle("Due date", isOn: $hasDueDate)
-                    if hasDueDate {
-                        DatePicker("Due", selection: $dueDate, displayedComponents: .date)
+                    dueDateField
+                    if dueDate != nil {
                         Text("After saving, right-click or long-press the card and choose Add or Update Deadline in Calendar.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -96,6 +95,51 @@ struct TaskEditor: View {
             }.padding(20)
         }.modifier(EditorSizing(width: 560, height: 690))
     }
+    private var dueDateField: some View {
+        HStack {
+            Text("Due date")
+            Spacer()
+            Button {
+                proposedDate = dueDate ?? Date()
+                showingDatePicker = true
+            } label: {
+                HStack(spacing: 6) {
+                    if let dueDate {
+                        Text(dueDate, format: .dateTime.month(.abbreviated).day().year())
+                    } else {
+                        Text("Select date…").foregroundStyle(.secondary)
+                    }
+                    Image(systemName: "calendar")
+                }
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Due date")
+            .accessibilityValue(dueDate?.formatted(date: .abbreviated, time: .omitted) ?? "No due date")
+            .popover(isPresented: $showingDatePicker) {
+                VStack(spacing: 16) {
+                    DatePicker("Due date", selection: $proposedDate, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                    HStack {
+                        Button("Cancel") { showingDatePicker = false }
+                        Spacer()
+                        Button("Set Date") {
+                            dueDate = proposedDate
+                            showingDatePicker = false
+                        }.buttonStyle(.borderedProminent)
+                    }
+                }.padding().frame(width: 320)
+            }
+            if dueDate != nil {
+                Button { dueDate = nil } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Clear due date")
+            }
+        }
+    }
+
     private func addItem() {
         let text = newItem.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -110,7 +154,7 @@ struct TaskEditor: View {
         item.details = details
         item.status = status
         item.priority = priority
-        item.dueDate = hasDueDate ? dueDate : nil
+        item.dueDate = dueDate
         item.tags = BoardRules.tags(from: tags)
         item.checklist = checklist.compactMap {
             var copy = $0
