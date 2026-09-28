@@ -3,6 +3,45 @@ import SwiftData
 @testable import BoardCore
 
 final class PersistenceTests: XCTestCase {
+    @MainActor func testSharedWorkspaceSaveCreatesAndEditsWithoutReplacingRelationships() throws {
+        let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+        let context = ModelContext(container)
+        let area = try StoreWriter.saveItem(nil, name: " Work ", in: context,
+                                            create: { ProjectArea(name: "") })
+        let project = try StoreWriter.saveItem(nil, name: " App ", in: context,
+                                               create: { Project(name: "") }) {
+            $0.area = area
+            $0.notes = "Keep these notes"
+        }
+        let task = BoardTask(title: "Keep this task", project: project)
+        context.insert(task)
+        try StoreWriter.save(context)
+        let projectID = project.id
+        let areaID = area.id
+        XCTAssertEqual(area.name, "Work")
+        XCTAssertEqual(project.name, "App")
+        _ = try StoreWriter.saveItem(area, name: " Personal ", in: context,
+                                    create: { XCTFail("Editing must reuse the Area"); return ProjectArea(name: "") })
+        _ = try StoreWriter.saveItem(project, name: " Tracker ", in: context,
+                                    create: { XCTFail("Editing must reuse the Project"); return Project(name: "") })
+        XCTAssertEqual(project.id, projectID)
+        XCTAssertEqual(project.area?.id, areaID)
+        XCTAssertEqual(project.area?.name, "Personal")
+        XCTAssertEqual(project.name, "Tracker")
+        XCTAssertEqual(project.notes, "Keep these notes")
+        XCTAssertEqual(project.taskList.map(\.id), [task.id])
+        XCTAssertThrowsError(try StoreWriter.saveItem(project, name: " ", in: context,
+                                                     create: { Project(name: "") }))
+        XCTAssertEqual(project.name, "Tracker")
+        XCTAssertThrowsError(try StoreWriter.saveItem(nil, name: " ", in: context,
+                                                     create: { ProjectArea(name: "") }))
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ProjectArea>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Project>()), 1)
+    }
+
     @MainActor func testProfilePersistsAndResolvesOfflineDuplicates() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

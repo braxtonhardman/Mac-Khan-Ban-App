@@ -94,7 +94,9 @@ The app retains its original bundle identifier and default local SwiftData store
 CloudKit-compatible models use default scalar values, optional relationships with inverses, and application-generated UUIDs without database uniqueness constraints. The default store is reused when switching to an iCloud build; existing local records become eligible for upload. Back up the app container before testing distribution builds or experimenting with iCloud accounts.
 
 - `Sources/BoardCore`: status, priority, checklist, progress/tag rules, and deadline event mapping.
-- `Sources/ProjectBoard/Models.swift`: SwiftData models and explicit save handling.
+- `Sources/ProjectBoard/Models.swift`: SwiftData models, the `WorkspaceItem` name contract, and shared create/update saves with rollback.
+- `WorkspaceItemEditor`: shared Project/Area name fields, validation display, Cancel/Save actions, and Mac/iPhone form layouts. Project-specific fields and Area name uniqueness stay in their own editors.
+- Areas and Projects retain separate stored models and deletion rules: removing an Area preserves projects; removing a Project cascades to its tasks. This abstraction does not change the SwiftData or CloudKit schema.
 - `Sources/ProjectBoard/CalendarIntegration.swift`: isolated EventKit integration.
 - `Sources/ProjectBoard/SyncStatus.swift`: private CloudKit configuration and observable sync status.
 - `Sources/ProjectBoard`: shared native UI with Mac/iPhone adaptations.

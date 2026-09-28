@@ -110,3 +110,33 @@ enum StoreWriter {
         catch { context.rollback(); throw error }
     }
 }
+
+/// Common editable identity without changing either SwiftData model's stored schema.
+protocol WorkspaceItem: PersistentModel {
+    var name: String { get set }
+}
+
+extension Project: WorkspaceItem {}
+extension ProjectArea: WorkspaceItem {}
+
+extension StoreWriter {
+    /// Mutate only on explicit Save; retain the shared rollback behavior on failure.
+    static func saveItem<Item: WorkspaceItem>(
+        _ existing: Item?, name: String, in context: ModelContext,
+        create: () -> Item, configure: (Item) -> Void = { _ in }
+    ) throws -> Item {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty else { throw WorkspaceItemError.emptyName }
+        let item = existing ?? create()
+        if existing == nil { context.insert(item) }
+        item.name = cleanName
+        configure(item)
+        try save(context)
+        return item
+    }
+}
+
+private enum WorkspaceItemError: LocalizedError {
+    case emptyName
+    var errorDescription: String? { "Enter a name before saving." }
+}
