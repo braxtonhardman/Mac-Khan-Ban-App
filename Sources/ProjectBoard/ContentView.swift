@@ -44,6 +44,7 @@ struct ContentView: View {
             .navigationTitle("Workspace")
             .listStyle(.insetGrouped)
             .listSectionSpacing(16)
+            .contentMargins(.top, 24, for: .scrollContent)
             #endif
             #if os(macOS)
             .toolbar(removing: .sidebarToggle)
