@@ -75,7 +75,8 @@ struct ContentView: View {
             }
             #else
             .toolbar {
-                ToolbarItem(placement: .automatic) { creationMenu }
+                ToolbarItem(placement: .topBarLeading) { creationMenu }
+                ToolbarItem(placement: .topBarTrailing) { profileButton }
             }
             #endif
             .navigationSplitViewColumnWidth(min: 230, ideal: 230)
@@ -83,7 +84,7 @@ struct ContentView: View {
         } detail: {
             Group {
                 if let selected {
-                    ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected }, showProfile: { showingProfile = true }, showSidebar: columnVisibility == .detailOnly ? { withAnimation { columnVisibility = .all } } : nil)
+                    ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected }, showSidebar: columnVisibility == .detailOnly ? { withAnimation { columnVisibility = .all } } : nil)
                         .id(selected.id)
                 } else {
                     ContentUnavailableView {
@@ -97,30 +98,28 @@ struct ContentView: View {
             }
             #if os(macOS)
             .padding(.top, isFullScreen ? 32 : 0)
+            #else
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { profileButton }
+            }
             #endif
         }
         #if os(macOS)
         .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
         .overlay(alignment: .topTrailing) {
-            if selected == nil {
-                HStack {
-                    if columnVisibility == .detailOnly {
-                        Button { withAnimation { columnVisibility = .all } } label: {
-                            Label("Show Sidebar", systemImage: "sidebar.left")
-                        }
+            HStack(spacing: 16) {
+                if selected == nil && columnVisibility == .detailOnly {
+                    Button { withAnimation { columnVisibility = .all } } label: {
+                        Label("Show Sidebar", systemImage: "sidebar.left")
                     }
-                    Button { showingProfile = true } label: {
-                        Label("Profile & Settings", systemImage: "person.crop.circle").font(AppTypography.controlIcon)
-                    }
-                }.labelStyle(.iconOnly).padding(20)
+                }
+                profileButton
             }
-        }
-        #else
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle").font(AppTypography.controlIcon) }
-            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 20)
+            .padding(.top, 20 + (isFullScreen ? 32 : 0))
         }
         #endif
         .modifier(MainWindowSizing())
@@ -168,6 +167,16 @@ struct ContentView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
+    private var profileButton: some View {
+        Button { showingProfile = true } label: {
+            Label("Profile & Settings", systemImage: "person.crop.circle")
+                .font(AppTypography.controlIcon)
+        }
+        .labelStyle(.iconOnly)
+        .help("Profile & Settings")
+        .accessibilityLabel("Profile & Settings")
+    }
+
     private var creationMenu: some View {
         Menu {
             Button("New Project…") { projectEditor = .init(project: nil) }
@@ -315,7 +324,6 @@ struct ProjectBoardView: View {
     @Bindable var project: Project
     let editProject: () -> Void
     let deleteProject: () -> Void
-    let showProfile: () -> Void
     let showSidebar: (() -> Void)?
     @State private var editor: TaskEditRequest?
     @State private var calendarTask: BoardTask?
@@ -336,10 +344,9 @@ struct ProjectBoardView: View {
                         Button(action: showSidebar) { Image(systemName: "sidebar.left") }
                             .help("Show Sidebar").accessibilityLabel("Show Sidebar")
                     }
-                    Button(action: showProfile) { Image(systemName: "person.crop.circle").font(AppTypography.controlIcon) }
-                        .help("Profile & Settings").accessibilityLabel("Profile & Settings")
                     projectOptions
                 }.buttonStyle(.borderless)
+                    .padding(.trailing, 46) // Reserve the fixed Profile control at the window edge.
                 #endif
                 if !project.notes.isEmpty { Text(project.notes).foregroundStyle(.secondary).lineLimit(2) }
                 HStack {
@@ -384,7 +391,9 @@ struct ProjectBoardView: View {
         .navigationTitle(project.name)
         #endif
         #if os(iOS)
-        .toolbar { projectOptions }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { projectOptions }
+        }
         #endif
         .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
         .sheet(item: $editor) { TaskEditor(project: project, task: $0.task, initialStatus: $0.status) }
