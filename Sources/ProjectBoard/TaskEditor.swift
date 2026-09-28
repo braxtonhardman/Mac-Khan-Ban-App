@@ -23,6 +23,7 @@ struct TaskEditor: View {
     @State private var checklist: [ChecklistItem]
     @State private var newItem = ""
     @State private var error: String?
+    @State private var confirmingDeletion = false
 
     init(project: Project, task: BoardTask?, initialStatus: TaskStatus) {
         self.project = project
@@ -41,6 +42,21 @@ struct TaskEditor: View {
                 Text(task == nil ? "New Task" : "Edit Task").font(AppTypography.pageTitle)
                 Spacer()
                 Text(project.name).font(AppTypography.contextTitle).foregroundStyle(.secondary).lineLimit(1)
+                if let task {
+                    Button("Delete Task", systemImage: "trash", role: .destructive) {
+                        confirmingDeletion = true
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Delete Task")
+                    .accessibilityLabel("Delete Task")
+                    .confirmationDialog("Delete “\(task.title)”?", isPresented: $confirmingDeletion, titleVisibility: .visible) {
+                        Button("Delete Task", role: .destructive, action: deleteTask)
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This permanently deletes the task and its checklist. This cannot be undone.")
+                    }
+                }
             }.padding(20)
             Divider()
             Form {
@@ -150,6 +166,13 @@ struct TaskEditor: View {
         checklist.append(ChecklistItem(title: text))
         newItem = ""
     }
+    private func deleteTask() {
+        guard let task else { return }
+        context.delete(task)
+        do { try StoreWriter.save(context); dismiss() }
+        catch { self.error = error.localizedDescription }
+    }
+
     private func save() {
         addItem()
         let item = task ?? BoardTask(title: "", project: project)

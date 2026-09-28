@@ -21,40 +21,29 @@ struct ContentView: View {
     @State private var deleting: Project?
     @State private var error: String?
 
-    private let projectIndent: CGFloat = 28
+    private var projectIndent: CGFloat {
+        #if os(iOS)
+        48
+        #else
+        28
+        #endif
+    }
 
     private var selected: Project? { projects.first { $0.id == selection } }
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selection) {
-                areaHeader("Unassigned", key: "unassigned")
-                if !isCollapsed("unassigned") {
-                    ForEach(projects.filter { $0.area == nil }) { projectRow($0) }
-                }
-                ForEach(areas) { area in
-                    areaHeader(area.name, key: area.id.uuidString)
-                        .contextMenu {
-                            Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
-                            Button("Edit Area…", systemImage: "pencil") { areaEditor = .init(area: area) }
-                            Button("Delete Area…", systemImage: "trash", role: .destructive) { removingArea = area }
-                            Divider()
-                            Button("New Area…") { areaEditor = .init(area: nil) }
-                        }
-                    if !isCollapsed(area.id.uuidString) {
-                        ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
-                        if area.projectList.isEmpty {
-                            Text("No projects yet").font(AppTypography.caption).foregroundStyle(.secondary)
-                                .padding(.leading, projectIndent)
-                        }
-                    }
-                }
+                areaGroup(nil)
+                ForEach(areas) { area in areaGroup(area) }
             }
             .contextMenu {
                 Button("New Area…") { areaEditor = .init(area: nil) }
                 Button("New Project…") { projectEditor = .init(project: nil) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
             #if os(iOS)
-            .navigationTitle("ProjectBoard")
+            .navigationTitle("Workspace")
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(16)
             #endif
             #if os(macOS)
             .toolbar(removing: .sidebarToggle)
@@ -202,6 +191,38 @@ struct ContentView: View {
             .help("Create Project or Area")
     }
 
+    @ViewBuilder
+    private func areaGroup(_ area: ProjectArea?) -> some View {
+        #if os(iOS)
+        Section { areaContents(area) }
+        #else
+        areaContents(area)
+        #endif
+    }
+
+    @ViewBuilder
+    private func areaContents(_ area: ProjectArea?) -> some View {
+        let key = area?.id.uuidString ?? "unassigned"
+        let children = projects.filter { $0.area?.id == area?.id }
+        areaHeader(area?.name ?? "Unassigned", key: key)
+            .contextMenu {
+                if let area {
+                    Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
+                    Button("Edit Area…", systemImage: "pencil") { areaEditor = .init(area: area) }
+                    Button("Delete Area…", systemImage: "trash", role: .destructive) { removingArea = area }
+                    Divider()
+                    Button("New Area…") { areaEditor = .init(area: nil) }
+                }
+            }
+        if !isCollapsed(key) {
+            ForEach(children) { projectRow($0) }
+            if children.isEmpty && area != nil {
+                Text("No projects yet").font(AppTypography.caption).foregroundStyle(.secondary)
+                    .padding(.leading, projectIndent)
+            }
+        }
+    }
+
     private func isCollapsed(_ key: String) -> Bool { collapsedAreas.split(separator: ",").contains(Substring(key)) }
     private func toggle(_ key: String, in value: inout String) {
         var keys = Set(value.split(separator: ",").map(String.init))
@@ -215,9 +236,18 @@ struct ContentView: View {
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
+                #if os(iOS)
+                Image(systemName: "folder")
+                    .font(AppTypography.body)
+                    .foregroundStyle(.tint)
+                    .frame(width: 30, height: 30)
+                    .background(.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityHidden(true)
+                #else
                 Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
                     .font(AppTypography.smallIcon)
                     .foregroundStyle(.secondary)
+                #endif
                 Text(name)
                     .font(AppTypography.sectionTitle)
                     .foregroundStyle(.primary)
@@ -229,6 +259,11 @@ struct ContentView: View {
                             .accessibilityHidden(true)
                     }
                 Spacer(minLength: 0)
+                #if os(iOS)
+                Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
+                    .font(AppTypography.smallIcon)
+                    .foregroundStyle(.secondary)
+                #endif
             }
             .padding(.vertical, 4)
             .contentShape(Rectangle())
