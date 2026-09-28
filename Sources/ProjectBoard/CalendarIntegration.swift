@@ -70,23 +70,23 @@ struct CalendarDeadlineSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Deadline in Calendar").font(.title2.bold())
-            Text(task.title).font(.headline)
+            Text("Deadline in Calendar").font(AppTypography.pageTitle)
+            Text(task.title).font(AppTypography.itemTitle)
             if let due = task.dueDate {
                 Text(due, format: .dateTime.weekday().month().day().year())
             }
             Text("Save an all-day event to a calendar you choose. Use this action again to update the event after changing the task. Changes in Calendar do not edit this task.")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(AppTypography.supporting).foregroundStyle(.secondary)
             if integration.ready {
                 Picker("Calendar", selection: $integration.selectedCalendarID) {
                     ForEach(integration.calendars, id: \.calendarIdentifier) { Text($0.title).tag($0.calendarIdentifier) }
                 }
                 Text(integration.hasExistingEvent ? "Updates the event previously added from this device." : "Creates a new event. Events added from another device are not linked here.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppTypography.caption).foregroundStyle(.secondary)
             } else {
                 Button("Choose Calendar…") { Task { await integration.prepare(taskID: task.id) } }
                     .disabled(integration.busy)
-                Text("Calendar access is requested only when you choose a calendar.").font(.caption).foregroundStyle(.secondary)
+                Text("Calendar access is requested only when you choose a calendar.").font(AppTypography.caption).foregroundStyle(.secondary)
             }
             if integration.busy { ProgressView() }
             if let error = integration.error { Text(error).foregroundStyle(.red) }

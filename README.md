@@ -121,3 +121,19 @@ Xcode compiles the core directly into both apps; Swift Package Manager builds it
 - iCloud needs signed builds and an available Apple account. A successful build and account check do not establish that data has reached a second device.
 - Real-device sync, Calendar event creation after permission, and distribution remain separate manual checks. Use your own Mac/iPhone with the same Apple account to complete the sync checklist above.
 - Signed Mac and iPhone simulator builds pass. The Mac profile/settings and simplified sidebar were checked in the running app. The Mac reports an available iCloud account and starts CloudKit activity. Simulator installation stalled during runtime validation, so no iPhone runtime or two-device sync pass is claimed.
+
+## Typography
+
+`AppTypography.swift` defines the shared typography scale. Use roles consistently instead of assigning sizes per view. Native navigation bars, menus, alerts, and date pickers retain platform typography. All app text uses the system font and iPhone text scales with Dynamic Type.
+
+| Role | Used for | Default Mac size |
+| --- | --- | --- |
+| Page title | Workspace, board title, sheet titles | 17 pt bold |
+| Section heading | Areas, board stages, form sections | 15 pt semibold |
+| Context title | Project name alongside a sheet title | 15 pt regular |
+| Item title | Task names, emphasized values | 13 pt semibold |
+| Body | Project rows, fields, actions | 13 pt regular |
+| Supporting | Descriptions, tag chips | 12 pt regular |
+| Caption | Dates, tags on cards, checklists, help text | 11 pt regular |
+
+`AppSection` applies the section heading style to grouped forms. Icon-only controls have separate symbol sizes.

@@ -38,13 +38,13 @@ struct TaskEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(task == nil ? "New Task" : "Edit Task").font(.title2.bold())
+                Text(task == nil ? "New Task" : "Edit Task").font(AppTypography.pageTitle)
                 Spacer()
-                Text(project.name).font(.title3).foregroundStyle(.secondary).lineLimit(1)
+                Text(project.name).font(AppTypography.contextTitle).foregroundStyle(.secondary).lineLimit(1)
             }.padding(20)
             Divider()
             Form {
-                Section("Task") {
+                AppSection("Task") {
                     TextField("Title", text: $title)
                     Picker("Status", selection: $status) {
                         ForEach(TaskStatus.allCases) { Text(appearance.title(for: $0)).tag($0) }
@@ -53,23 +53,23 @@ struct TaskEditor: View {
                         ForEach(TaskPriority.allCases) { Text($0.title).tag($0) }
                     }
                 }
-                Section("Description") {
+                AppSection("Description") {
                     TextEditor(text: $details)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 85)
                         .accessibilityLabel("Task description")
                 }
-                Section("Details") {
+                AppSection("Details") {
                     dueDateField
                     if dueDate != nil {
                         Text("After saving, right-click or long-press the card and choose Add or Update Deadline in Calendar.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(AppTypography.caption).foregroundStyle(.secondary)
                     }
                 }
-                Section("Tags") {
+                AppSection("Tags") {
                     TagSelector(selection: $tags, available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
                 }
-                Section("Checklist") {
+                AppSection("Checklist") {
                     ForEach($checklist) { $item in
                         HStack {
                             Toggle("Complete", isOn: $item.isComplete).labelsHidden()
@@ -206,12 +206,12 @@ struct TagSelector: View {
                                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
                                         selection.removeAll { $0.caseInsensitiveCompare(tag) == .orderedSame }
                                     }
-                                } label: { Image(systemName: "xmark").font(.caption) }
+                                } label: { Image(systemName: "xmark").font(AppTypography.caption) }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Remove tag " + tag)
                             }
                         }
-                        .font(.callout)
+                        .font(AppTypography.supporting)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                     }
@@ -219,7 +219,7 @@ struct TagSelector: View {
             }
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search or create a tag…", text: $query)
+                TextField("Search or create a tag", text: $query, prompt: Text("Search or create a tag…"))
                     .labelsHidden()
                     .accessibilityLabel("Search or create a tag")
                     .textFieldStyle(.plain)
@@ -243,7 +243,7 @@ struct TagSelector: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if matches.isEmpty {
                         Text(search.isEmpty ? "No tags yet. Type a name to create one." : "No tags currently exist for “\(search)”. Create it below.")
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(AppTypography.supporting).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
                         ScrollView {

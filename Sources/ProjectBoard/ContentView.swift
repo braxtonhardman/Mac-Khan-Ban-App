@@ -41,7 +41,7 @@ struct ContentView: View {
                     if !isCollapsed(area.id.uuidString) {
                         ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
                         if area.projectList.isEmpty {
-                            Text("No projects yet").font(.caption).foregroundStyle(.secondary)
+                            Text("No projects yet").font(AppTypography.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -59,7 +59,7 @@ struct ContentView: View {
             .toolbarBackground(.visible, for: .windowToolbar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 12) {
-                    Text("Workspace").font(.title2.bold()).lineLimit(1)
+                    Text("Workspace").font(AppTypography.pageTitle).lineLimit(1)
                     Spacer()
                     creationMenu
                     Button {
@@ -111,7 +111,7 @@ struct ContentView: View {
                         }
                     }
                     Button { showingProfile = true } label: {
-                        Label("Profile & Settings", systemImage: "person.crop.circle").font(.system(size: 22))
+                        Label("Profile & Settings", systemImage: "person.crop.circle").font(AppTypography.controlIcon)
                     }
                 }.labelStyle(.iconOnly).padding(20)
             }
@@ -119,7 +119,7 @@ struct ContentView: View {
         #else
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle").font(.system(size: 22)) }
+                Button { showingProfile = true } label: { Label("Profile & Settings", systemImage: "person.crop.circle").font(AppTypography.controlIcon) }
             }
         }
         #endif
@@ -192,10 +192,10 @@ struct ContentView: View {
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
-                    .font(.caption.weight(.semibold))
+                    .font(AppTypography.smallIcon)
                     .foregroundStyle(.secondary)
                 Text(name)
-                    .font(.title3.weight(.semibold))
+                    .font(AppTypography.sectionTitle)
                     .foregroundStyle(.primary)
                     .padding(.bottom, 7)
                     .overlay(alignment: .bottom) {
@@ -215,7 +215,7 @@ struct ContentView: View {
     }
     private func projectRow(_ project: Project) -> some View {
         NavigationLink(value: project.id) {
-            Text(project.name).font(.body).padding(.vertical, 4)
+            Text(project.name).font(AppTypography.body).padding(.vertical, 4)
         }
         .tag(project.id)
         .contextMenu {
@@ -263,13 +263,13 @@ struct ProjectEditor: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(project == nil ? "New Project" : "Edit Project").font(.title2.bold())
+            Text(project == nil ? "New Project" : "Edit Project").font(AppTypography.pageTitle)
             TextField("Project name", text: $name)
             Picker("Area", selection: $areaID) {
                 Text("Unassigned").tag(nil as UUID?)
                 ForEach(areas) { Text($0.name).tag(Optional($0.id)) }
             }
-            Text("Description").font(.headline)
+            Text("Description").font(AppTypography.sectionTitle)
             TextEditor(text: $notes)
                 .scrollContentBackground(.hidden)
                 .frame(height: 100).border(.quaternary)
@@ -328,7 +328,7 @@ struct ProjectBoardView: View {
                 #if os(macOS)
                 HStack(alignment: .top, spacing: 16) {
                     Text(project.name)
-                        .font(.system(size: NSFont.preferredFont(forTextStyle: .title2).pointSize * 1.1, weight: .bold))
+                        .font(AppTypography.pageTitle)
                         .lineLimit(2)
                         .textSelection(.enabled)
                     Spacer()
@@ -336,7 +336,7 @@ struct ProjectBoardView: View {
                         Button(action: showSidebar) { Image(systemName: "sidebar.left") }
                             .help("Show Sidebar").accessibilityLabel("Show Sidebar")
                     }
-                    Button(action: showProfile) { Image(systemName: "person.crop.circle").font(.system(size: 22)) }
+                    Button(action: showProfile) { Image(systemName: "person.crop.circle").font(AppTypography.controlIcon) }
                         .help("Profile & Settings").accessibilityLabel("Profile & Settings")
                     projectOptions
                 }.buttonStyle(.borderless)
@@ -344,7 +344,7 @@ struct ProjectBoardView: View {
                 if !project.notes.isEmpty { Text(project.notes).foregroundStyle(.secondary).lineLimit(2) }
                 HStack {
                     ProgressView(value: project.progress).frame(width: compactLayout ? 65 : 160)
-                    Text(project.progress, format: .percent.precision(.fractionLength(0))).font(.headline)
+                    Text(project.progress, format: .percent.precision(.fractionLength(0))).font(AppTypography.itemTitle)
                     Text("· \(project.taskList.filter { $0.status == .done }.count) of \(project.taskList.count) tasks complete")
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -412,7 +412,7 @@ struct ProjectBoardView: View {
             .padding(.leading, 18)
             .padding(.bottom, 8)
             #else
-            .font(.system(size: 22))
+            .font(AppTypography.controlIcon)
             #endif
     }
 
@@ -421,7 +421,7 @@ struct ProjectBoardView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label(appearance.title(for: status), systemImage: status.symbol)
-                    .font(.headline).lineLimit(2)
+                    .font(AppTypography.sectionTitle).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(appearance.title(for: status))
                 Text("\(tasks.count)").foregroundStyle(.secondary)
@@ -448,7 +448,7 @@ struct ProjectBoardView: View {
                             }
                     }
                     if tasks.isEmpty {
-                        Text("Drop a task here").font(.caption).foregroundStyle(.tertiary)
+                        Text("Drop a task here").font(AppTypography.caption).foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity).padding(.vertical, 28)
                     }
                 }.padding(2)
@@ -481,24 +481,24 @@ struct TaskCard: View {
     let task: BoardTask
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(task.title).font(.headline).fixedSize(horizontal: false, vertical: true)
-            if !task.details.isEmpty { Text(task.details).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+            Text(task.title).font(AppTypography.itemTitle).fixedSize(horizontal: false, vertical: true)
+            if !task.details.isEmpty { Text(task.details).font(AppTypography.supporting).foregroundStyle(.secondary).lineLimit(2) }
             HStack {
-                Text(task.priority.title).font(.caption.weight(.medium))
+                Text(task.priority.title).font(AppTypography.metadataEmphasis)
                     .foregroundStyle(task.priority.rawValue >= 2 ? Color.orange : Color.secondary)
                 Spacer()
                 if let date = task.dueDate {
                     Label(date.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
-                        .font(.caption2)
+                        .font(AppTypography.caption)
                         .foregroundStyle(date < Calendar.current.startOfDay(for: Date()) && task.status != .done ? Color.red : Color.secondary)
                 }
             }
             if !task.tags.isEmpty {
-                Text(task.tags.map { "#\($0)" }.joined(separator: "  ")).font(.caption).foregroundStyle(.tint).lineLimit(2)
+                Text(task.tags.map { "#\($0)" }.joined(separator: "  ")).font(AppTypography.caption).foregroundStyle(.tint).lineLimit(2)
             }
             if !task.checklist.isEmpty {
                 Label("\(task.checklist.filter(\.isComplete).count)/\(task.checklist.count)", systemImage: "checklist")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppTypography.caption).foregroundStyle(.secondary)
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -532,10 +532,10 @@ private struct AreaEditor: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(area == nil ? "New Area" : "Rename Area").font(.title2.bold())
+            Text(area == nil ? "New Area" : "Rename Area").font(AppTypography.pageTitle)
             TextField("Area name", text: $name)
             Text("Group related projects, such as Work, Personal, or Learning.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(AppTypography.caption).foregroundStyle(.secondary)
             if duplicate { Text("Choose a different area name.").foregroundStyle(.red) }
             if let error { Text(error).foregroundStyle(.red) }
             HStack {
@@ -568,9 +568,9 @@ struct EditorSizing: ViewModifier {
     var height: CGFloat? = nil
     func body(content: Content) -> some View {
         #if os(macOS)
-        content.frame(width: width, height: height)
+        content.font(AppTypography.body).frame(width: width, height: height)
         #else
-        content.frame(maxWidth: .infinity)
+        content.font(AppTypography.body).frame(maxWidth: .infinity)
         #endif
     }
 }

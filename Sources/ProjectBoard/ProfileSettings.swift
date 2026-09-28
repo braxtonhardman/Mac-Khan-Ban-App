@@ -48,6 +48,7 @@ struct AppRootView: View {
             .background(Color(nsColor: .windowBackgroundColor))
             .background(SolidTitlebarBackground { titlebarClearance = $0 })
             #endif
+            .font(AppTypography.body)
             .environment(\.boardAppearance, appearance)
             .tint(appearance.accent.color)
             .accentColor(appearance.accent.color)
@@ -70,28 +71,28 @@ struct ProfileSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Profile & Settings", systemImage: "person.crop.circle").font(.title2.bold())
+                Label("Profile & Settings", systemImage: "person.crop.circle").font(AppTypography.pageTitle)
                 Spacer()
             }.padding(20)
             Form {
-                Section("Appearance") {
+                AppSection("Appearance") {
                     Picker("Theme", selection: $draft.mode) {
                         ForEach(AppearanceMode.allCases) { mode in
                             Text(mode.title).tag(mode)
                         }
                     }.pickerStyle(.segmented)
                     Text("System follows your device. Light or Dark overrides it for this app.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppTypography.caption).foregroundStyle(.secondary)
                 }
-                Section("Board stages") {
+                AppSection("Board stages") {
                     ForEach(Array(TaskStatus.allCases.enumerated()), id: \.element.id) { index, status in
                         TextField(status.title, text: $draft.stageNames[index])
                     }
                     Text("These names apply to every project. The fifth stage always counts as completed work.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppTypography.caption).foregroundStyle(.secondary)
                     if let validation = draft.validationError { Text(validation).foregroundStyle(.red) }
                 }
-                Section("Accent color") {
+                AppSection("Accent color") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
                         ForEach(AccentChoice.allCases) { choice in
                             Button { draft.accent = choice } label: {
@@ -99,10 +100,10 @@ struct ProfileSettingsView: View {
                                     Circle().fill(choice.color).frame(width: 30, height: 30)
                                         .overlay {
                                             if draft.accent == choice {
-                                                Image(systemName: "checkmark").font(.caption.bold()).foregroundStyle(.black)
+                                                Image(systemName: "checkmark").font(AppTypography.smallIcon).foregroundStyle(.black)
                                             }
                                         }
-                                    Text(choice.title).font(.caption).foregroundStyle(.primary)
+                                    Text(choice.title).font(AppTypography.caption).foregroundStyle(.primary)
                                 }.frame(maxWidth: .infinity).padding(4)
                             }.buttonStyle(.plain)
                                 .accessibilityLabel(choice.title)
@@ -110,14 +111,14 @@ struct ProfileSettingsView: View {
                         }
                     }
                 }
-                Section("Tags") {
+                AppSection("Tags") {
                     TagSelector(selection: $tagNames, available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags), allowsRemoval: false)
                     Text("Create reusable tags here or while editing a task. Tags already used on tasks are available automatically.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppTypography.caption).foregroundStyle(.secondary)
                 }
-                Section("iCloud") {
+                AppSection("iCloud") {
                     Text("Your appearance, stage names, accent color, and tags sync between Mac and iPhone when both use an iCloud build. Area collapse stays specific to each device.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(AppTypography.caption).foregroundStyle(.secondary)
                     Button("Storage & Sync…") { showingSync = true }
                 }
             }.formStyle(.grouped)

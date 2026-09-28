@@ -56,14 +56,14 @@ struct SyncStatusView: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Storage & Sync", systemImage: "icloud").font(.title2.bold())
-            Text(status.account).font(.headline)
+            Label("Storage & Sync", systemImage: "icloud").font(AppTypography.pageTitle)
+            Text(status.account).font(AppTypography.itemTitle)
             Text(status.activity).foregroundStyle(.secondary)
             if let date = status.lastTransfer {
-                Text("Last transfer: \(date.formatted())").font(.caption)
+                Text("Last transfer: \(date.formatted())").font(AppTypography.caption)
             }
             Text("Use the same iCloud account and app environment on Mac and iPhone. Projects, areas, tasks, and profile settings sync automatically in iCloud builds. Layout preferences and Calendar event links stay on each device.")
-                .font(.callout)
+                .font(AppTypography.supporting)
             HStack {
                 if SyncStatus.isCloudBuild {
                     Button("Check Account") { Task { await status.refreshAccount() } }
