@@ -239,7 +239,9 @@ struct ContentView: View {
     }
     private func projectRow(_ project: Project) -> some View {
         NavigationLink(value: project.id) {
-            Text(project.name).font(AppTypography.body).padding(.vertical, 4)
+            Text(project.name).font(AppTypography.body)
+                .foregroundStyle(.primary.opacity(0.85))
+                .padding(.vertical, 4)
                 .padding(.leading, projectIndent)
         }
         .tag(project.id)
