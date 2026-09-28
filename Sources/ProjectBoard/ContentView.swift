@@ -29,9 +29,6 @@ struct ContentView: View {
             List(selection: $selection) {
                 areaHeader("Unassigned", key: "unassigned")
                 if !isCollapsed("unassigned") {
-                    #if os(iOS)
-                    addProjectRow(in: nil)
-                    #endif
                     ForEach(projects.filter { $0.area == nil }) { projectRow($0) }
                 }
                 ForEach(areas) { area in
@@ -44,9 +41,6 @@ struct ContentView: View {
                             Button("New Area…") { areaEditor = .init(area: nil) }
                         }
                     if !isCollapsed(area.id.uuidString) {
-                        #if os(iOS)
-                        addProjectRow(in: area)
-                        #endif
                         ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
                         if area.projectList.isEmpty {
                             Text("No projects yet").font(AppTypography.caption).foregroundStyle(.secondary)
@@ -84,8 +78,11 @@ struct ContentView: View {
             }
             #else
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { creationMenu }
                 ToolbarItem(placement: .topBarTrailing) { profileButton }
+            }
+            .contentMargins(.bottom, 88, for: .scrollContent)
+            .overlay(alignment: .bottomTrailing) {
+                creationMenu.padding(20)
             }
             #endif
             .navigationSplitViewColumnWidth(min: 230, ideal: 230)
@@ -191,28 +188,19 @@ struct ContentView: View {
             Button("New Project…") { projectEditor = .init(project: nil) }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("New Area…") { areaEditor = .init(area: nil) }
-        } label: { Label("Create Project or Area", systemImage: "plus.rectangle.on.folder") }
+        } label: {
+            Label("Create Project or Area", systemImage: "plus.rectangle.on.folder")
+                #if os(iOS)
+                .font(AppTypography.controlIcon)
+                .frame(width: 56, height: 56)
+                .background(.regularMaterial, in: Circle())
+                .overlay { Circle().strokeBorder(.quaternary, lineWidth: 0.5) }
+                .contentShape(Circle())
+                #endif
+        }
             .labelStyle(.iconOnly)
             .help("Create Project or Area")
     }
-
-    #if os(iOS)
-    private func addProjectRow(in area: ProjectArea?) -> some View {
-        Button {
-            projectEditor = .init(project: nil, area: area)
-        } label: {
-            Image(systemName: "plus")
-                .font(AppTypography.itemTitle)
-                .padding(.leading, projectIndent)
-                .foregroundStyle(.tint)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .listRowSeparator(.hidden)
-        .accessibilityLabel("New project in " + (area?.name ?? "Unassigned"))
-    }
-    #endif
 
     private func isCollapsed(_ key: String) -> Bool { collapsedAreas.split(separator: ",").contains(Substring(key)) }
     private func toggle(_ key: String, in value: inout String) {
