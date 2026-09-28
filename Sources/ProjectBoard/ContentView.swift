@@ -21,13 +21,7 @@ struct ContentView: View {
     @State private var deleting: Project?
     @State private var error: String?
 
-    private var projectIndent: CGFloat {
-        #if os(iOS)
-        48
-        #else
-        28
-        #endif
-    }
+    private let projectIndent: CGFloat = 48
 
     private var selected: Project? { projects.first { $0.id == selection } }
     var body: some View {
@@ -237,17 +231,11 @@ struct ContentView: View {
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                #if os(iOS)
                 Image(systemName: "square.stack.3d.up")
                     .font(AppTypography.body)
                     .foregroundStyle(.tint)
                     .frame(width: 30, height: 30)
                     .accessibilityHidden(true)
-                #else
-                Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
-                    .font(AppTypography.smallIcon)
-                    .foregroundStyle(.secondary)
-                #endif
                 Text(name)
                     .font(AppTypography.sectionTitle)
                     .foregroundStyle(.primary)
@@ -259,11 +247,9 @@ struct ContentView: View {
                             .accessibilityHidden(true)
                     }
                 Spacer(minLength: 0)
-                #if os(iOS)
                 Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
                     .font(AppTypography.smallIcon)
                     .foregroundStyle(.secondary)
-                #endif
             }
             .padding(.vertical, 4)
             .contentShape(Rectangle())
