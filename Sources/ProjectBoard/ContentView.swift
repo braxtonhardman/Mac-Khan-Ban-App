@@ -62,7 +62,7 @@ struct ContentView: View {
             .toolbarBackground(.visible, for: .windowToolbar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 12) {
-                    Text("Workspace").font(.headline).lineLimit(1)
+                    Text("Workspace").font(.title2.bold()).lineLimit(1)
                     Spacer()
                     creationMenu
                     Button {
