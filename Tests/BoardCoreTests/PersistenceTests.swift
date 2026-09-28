@@ -20,6 +20,7 @@ final class PersistenceTests: XCTestCase {
             let newer = AppProfile(stageNames: ["Ideas", "Next", "Active", "Waiting", "Shipped"], accent: .purple)
             newer.updatedAt = Date(timeIntervalSince1970: 200)
             newer.appearanceMode = AppearanceMode.dark.rawValue
+            newer.tagNames = ["Work", "Personal"]
             context.insert(older)
             context.insert(newer)
             try StoreWriter.save(context)
@@ -31,6 +32,7 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(current.appearance.title(for: .done), "Shipped")
         XCTAssertEqual(current.appearance.accent, .purple)
         XCTAssertEqual(current.appearance.mode, .dark)
+        XCTAssertEqual(current.tagNames, ["Work", "Personal"])
         XCTAssertEqual(AppProfile.current(in: profiles.reversed())?.id, current.id)
     }
 

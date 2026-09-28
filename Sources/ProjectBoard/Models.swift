@@ -85,6 +85,7 @@ final class AppProfile {
     var stageNames: [String] = ["Backlog", "Planned", "In Progress", "Blocked", "Done"]
     var accentName: String = "blue"
     var appearanceMode: String = "system"
+    var tagNames: [String] = []
 
     init(stageNames: [String], accent: AccentChoice) {
         self.stageNames = stageNames

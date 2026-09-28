@@ -60,6 +60,8 @@ struct ProfileSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.boardAppearance) private var appearance
     @Query private var profiles: [AppProfile]
+    @Query private var allTasks: [BoardTask]
+    @State private var tagNames: [String] = []
     @State private var draft = BoardAppearance()
     @State private var loaded = false
     @State private var error: String?
@@ -108,8 +110,13 @@ struct ProfileSettingsView: View {
                         }
                     }
                 }
+                Section("Tags") {
+                    TagSelector(selection: $tagNames, available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags), allowsRemoval: false)
+                    Text("Create reusable tags here or while editing a task. Tags already used on tasks are available automatically.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("iCloud") {
-                    Text("Your appearance, stage names, and accent color sync between Mac and iPhone when both use an iCloud build. Area collapse stays specific to each device.")
+                    Text("Your appearance, stage names, accent color, and tags sync between Mac and iPhone when both use an iCloud build. Area collapse stays specific to each device.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Storage & Sync…") { showingSync = true }
                 }
@@ -126,6 +133,7 @@ struct ProfileSettingsView: View {
         .onAppear {
             guard !loaded else { return }
             draft = BoardAppearance(stageNames: TaskStatus.allCases.map { appearance.title(for: $0) }, accent: appearance.accent, mode: appearance.mode)
+            tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
             loaded = true
         }
         .sheet(isPresented: $showingSync) { SyncStatusView() }
@@ -138,6 +146,7 @@ struct ProfileSettingsView: View {
         profile.stageNames = names
         profile.accentName = draft.accent.rawValue
         profile.appearanceMode = draft.mode.rawValue
+        profile.tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags) + tagNames)
         profile.updatedAt = Date()
         do { try StoreWriter.save(context); dismiss() }
         catch { self.error = error.localizedDescription }

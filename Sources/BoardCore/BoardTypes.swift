@@ -53,3 +53,22 @@ public enum BoardRules {
         }
     }
 }
+
+/// Shared normalization keeps tags typed on different devices from differing only by case.
+public enum TagRules {
+    public static func normalized(_ tags: [String]) -> [String] {
+        var seen = Set<String>()
+        return tags.compactMap {
+            let name = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !name.isEmpty && seen.insert(name.lowercased()).inserted ? name : nil
+        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+    public static func matches(_ tags: [String], query: String) -> [String] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized(tags).filter { query.isEmpty || $0.localizedStandardContains(query) }
+    }
+    public static func existing(_ query: String, in tags: [String]) -> String? {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized(tags).first { $0.caseInsensitiveCompare(query) == .orderedSame }
+    }
+}
