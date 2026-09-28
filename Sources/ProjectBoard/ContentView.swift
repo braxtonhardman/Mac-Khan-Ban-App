@@ -36,8 +36,8 @@ struct ContentView: View {
                     areaHeader(area.name, key: area.id.uuidString)
                         .contextMenu {
                             Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
-                            Button("Rename Area…") { areaEditor = .init(area: area) }
-                            Button("Remove Area…") { removingArea = area }
+                            Button("Edit Area…", systemImage: "pencil") { areaEditor = .init(area: area) }
+                            Button("Delete Area…", systemImage: "trash", role: .destructive) { removingArea = area }
                             Divider()
                             Button("New Area…") { areaEditor = .init(area: nil) }
                         }
@@ -148,8 +148,8 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingProfile) { ProfileSettingsView() }
         .sheet(item: $areaEditor) { AreaEditor(area: $0.area) }
-        .confirmationDialog("Remove \(removingArea?.name ?? "area")?", isPresented: Binding(get: { removingArea != nil }, set: { if !$0 { removingArea = nil } })) {
-            Button("Remove Area") {
+        .confirmationDialog("Delete \(removingArea?.name ?? "area")?", isPresented: Binding(get: { removingArea != nil }, set: { if !$0 { removingArea = nil } })) {
+            Button("Delete Area", role: .destructive) {
                 guard let area = removingArea else { return }
                 for project in area.projectList { project.area = nil }
                 context.delete(area)
@@ -594,7 +594,7 @@ private struct AreaEditor: View {
     }
     var body: some View {
         #if os(iOS)
-        MobileEditorSheet(title: area == nil ? "New Area" : "Rename Area",
+        MobileEditorSheet(title: area == nil ? "New Area" : "Edit Area",
                           saveTitle: area == nil ? "Create" : "Save",
                           canSave: !cleanName.isEmpty && !duplicate, save: save) {
             AppSection("Area name") {
@@ -610,7 +610,7 @@ private struct AreaEditor: View {
         }
         #else
         VStack(alignment: .leading, spacing: 16) {
-            Text(area == nil ? "New Area" : "Rename Area").font(AppTypography.pageTitle)
+            Text(area == nil ? "New Area" : "Edit Area").font(AppTypography.pageTitle)
             TextField("Area name", text: $name)
             Text("Group related projects, such as Work, Personal, or Learning.")
                 .font(AppTypography.caption).foregroundStyle(.secondary)
