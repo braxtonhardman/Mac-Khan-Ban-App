@@ -6,6 +6,7 @@ import BoardCore
 
 struct ContentView: View {
     var isFullScreen = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var context
     @Query(sort: \Project.createdAt) private var projects: [Project]
     @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
@@ -24,28 +25,24 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(selection: $selection) {
-                Section {
-                    if !isCollapsed("unassigned") {
-                        ForEach(projects.filter { $0.area == nil }) { projectRow($0) }
-                    }
-                } header: { areaHeader("Unassigned", key: "unassigned") }
+                areaHeader("Unassigned", key: "unassigned")
+                if !isCollapsed("unassigned") {
+                    ForEach(projects.filter { $0.area == nil }) { projectRow($0) }
+                }
                 ForEach(areas) { area in
-                    Section {
-                        if !isCollapsed(area.id.uuidString) {
-                            ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
-                            if area.projectList.isEmpty {
-                                Text("No projects yet").font(.caption).foregroundStyle(.secondary)
-                            }
+                    areaHeader(area.name, key: area.id.uuidString)
+                        .contextMenu {
+                            Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
+                            Button("Rename Area…") { areaEditor = .init(area: area) }
+                            Button("Remove Area…") { removingArea = area }
+                            Divider()
+                            Button("New Area…") { areaEditor = .init(area: nil) }
                         }
-                    } header: {
-                        areaHeader(area.name, key: area.id.uuidString)
-                            .contextMenu {
-                                Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
-                                Button("Rename Area…") { areaEditor = .init(area: area) }
-                                Button("Remove Area…") { removingArea = area }
-                                Divider()
-                                Button("New Area…") { areaEditor = .init(area: nil) }
-                            }
+                    if !isCollapsed(area.id.uuidString) {
+                        ForEach(projects.filter { $0.area?.id == area.id }) { projectRow($0) }
+                        if area.projectList.isEmpty {
+                            Text("No projects yet").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -188,28 +185,33 @@ struct ContentView: View {
         value = keys.sorted().joined(separator: ",")
     }
     private func areaHeader(_ name: String, key: String) -> some View {
-        Button { toggle(key, in: &collapsedAreas) } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack {
-                    Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
-                        .font(.caption.weight(.semibold))
-                    Text(name)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                }
-                Rectangle()
-                    .fill(.secondary.opacity(0.18))
-                    .frame(height: 0.5)
-                    .accessibilityHidden(true)
+        Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                toggle(key, in: &collapsedAreas)
             }
-            .padding(.bottom, 5)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(name)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, 7)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(.secondary.opacity(0.18))
+                            .frame(height: 0.5)
+                            .accessibilityHidden(true)
+                    }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
             .contentShape(Rectangle())
-        }.buttonStyle(.plain)
-            #if os(macOS)
-            .padding(.top, 12)
-            #endif
-            .accessibilityLabel("\(isCollapsed(key) ? "Expand" : "Collapse") \(name)")
+        }
+        .buttonStyle(.plain)
+        .listRowSeparator(.hidden)
+        .accessibilityLabel("\(isCollapsed(key) ? "Expand" : "Collapse") \(name)")
     }
     private func projectRow(_ project: Project) -> some View {
         NavigationLink(value: project.id) {
