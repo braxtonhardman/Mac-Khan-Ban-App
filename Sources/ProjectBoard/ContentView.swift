@@ -237,11 +237,10 @@ struct ContentView: View {
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 #if os(iOS)
-                Image(systemName: "folder")
+                Image(systemName: "square.stack.3d.up")
                     .font(AppTypography.body)
                     .foregroundStyle(.tint)
                     .frame(width: 30, height: 30)
-                    .background(.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                     .accessibilityHidden(true)
                 #else
                 Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
