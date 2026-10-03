@@ -42,11 +42,12 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 ## Tasks
 
 - Select a project, then use **… → New Task** (Command-N on Mac) or a column's plus button.
-- Click/tap a card to edit title, description, status, priority, due date, comma-separated tags, and checklist.
+- Click/tap a card to edit title, description, status, priority, due date, tags, and subtasks.
+- Subtasks are full child tasks with their own status, priority, description, due date, and tags. Open a parent task and choose **Add Subtask** to reuse the task editor. Select a subtask row to edit it, or use its circular completion control for a quick status change.
 - Drag cards between Backlog, Planned, In Progress, Blocked, and Done. The card context menu also provides **Move To**.
 - On iPhone, a column picker shows one column at a time; use the task editor or long-press **Move To** to change status.
 - Right-click/long-press a task to delete it. Project deletion also deletes its tasks; both require confirmation.
-- Progress is completed tasks divided by all tasks. Empty projects show 0%. Checklists do not independently affect progress.
+- Project progress is completed top-level tasks divided by all top-level tasks. Subtask progress appears on the parent card and inside its editor; completing a child does not automatically complete its parent.
 - Edits remain drafts until Save; Cancel discards them.
 
 ## Profile & Settings
@@ -89,7 +90,7 @@ Apple references: [SwiftData sync](https://developer.apple.com/documentation/swi
 
 ## Persistence and architecture
 
-The app retains its original bundle identifier and default local SwiftData store. Upgrades preserve existing V1 projects; projects without an area appear under Unassigned. Tests create stores with frozen earlier model definitions and reopen them using the current schema to verify migration.
+The app retains its original bundle identifier and default local SwiftData store. Upgrades preserve existing V1 projects; projects without an area appear under Unassigned. Original checklist rows are converted into full child tasks at startup. Tests create stores with frozen earlier model definitions and reopen them using the current schema to verify migration.
 
 CloudKit-compatible models use default scalar values, optional relationships with inverses, and application-generated UUIDs without database uniqueness constraints. The default store is reused when switching to an iCloud build; existing local records become eligible for upload. Back up the app container before testing distribution builds or experimenting with iCloud accounts.
 
@@ -118,7 +119,7 @@ Xcode compiles the core directly into both apps; Swift Package Manager builds it
 
 ## Validation notes
 
-- Ten automated tests cover progress, tags, checklist encoding, DST-safe calendar dates, persistence, area lifecycle, upgrades from V1 and Areas schemas, profile validation, and profile persistence/offline duplicate selection.
+- Fifteen automated tests cover progress, tags, legacy checklist migration and sync reconciliation, child-task drafts and persistence, DST-safe calendar dates, persistence, area lifecycle, upgrades from V1 and Areas schemas, profile validation, and profile persistence/offline duplicate selection.
 - Mac UI smoke checks cover existing data after upgrade, Area creation/moving/collapse, and the simplified project-name sidebar.
 - iCloud needs signed builds and an available Apple account. A successful build and account check do not establish that data has reached a second device.
 - Real-device sync, Calendar event creation after permission, and distribution remain separate manual checks. Use your own Mac/iPhone with the same Apple account to complete the sync checklist above.

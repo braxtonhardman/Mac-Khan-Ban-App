@@ -128,7 +128,9 @@ struct ContentView: View {
             linkedTask = task
         }
         .sheet(item: $linkedTask) { task in
-            if let project = task.project { TaskEditor(project: project, task: task, initialStatus: task.status) }
+            if let project = task.project {
+                TaskEditor(project: project, task: task, initialStatus: task.status, parentTask: task.parentTask)
+            }
         }
         .sheet(isPresented: $showingProfile) { ProfileSettingsView() }
         .sheet(item: $areaEditor) { AreaEditor(area: $0.area) }
@@ -359,6 +361,7 @@ struct TaskEditRequest: Identifiable {
     let id = UUID()
     var task: BoardTask?
     var status: TaskStatus = .backlog
+    var parentTask: BoardTask? = nil
 }
 
 struct ProjectBoardView: View {
@@ -406,7 +409,7 @@ struct ProjectBoardView: View {
                 HStack {
                     ProgressView(value: project.progress).frame(width: compactLayout ? 65 : 160)
                     Text(project.progress, format: .percent.precision(.fractionLength(0))).font(AppTypography.itemTitle)
-                    Text("· \(project.taskList.filter { $0.status == .done }.count) of \(project.taskList.count) tasks complete")
+                    Text("· \(project.topLevelTasks.filter { $0.status == .done }.count) of \(project.topLevelTasks.count) tasks complete")
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
@@ -450,7 +453,9 @@ struct ProjectBoardView: View {
         }
         #endif
         .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
-        .sheet(item: $editor) { TaskEditor(project: project, task: $0.task, initialStatus: $0.status) }
+        .sheet(item: $editor) {
+            TaskEditor(project: project, task: $0.task, initialStatus: $0.status, parentTask: $0.parentTask)
+        }
         .confirmationDialog("Delete task?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete Task", role: .destructive) {
                 if let deleting { context.delete(deleting); save() }
@@ -480,7 +485,7 @@ struct ProjectBoardView: View {
     }
 
     private func column(_ status: TaskStatus, width: CGFloat, height: CGFloat) -> some View {
-        let tasks = project.taskList.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
+        let tasks = project.topLevelTasks.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label(appearance.title(for: status), systemImage: status.symbol)
@@ -523,7 +528,7 @@ struct ProjectBoardView: View {
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { values, _ in
             let ids = Set(values.compactMap(UUID.init(uuidString:)))
-            let matches = project.taskList.filter { ids.contains($0.id) }
+            let matches = project.topLevelTasks.filter { ids.contains($0.id) }
             guard !matches.isEmpty else { return false }
             for task in matches { task.status = status; task.updatedAt = Date() }
             return save()
@@ -559,8 +564,8 @@ struct TaskCard: View {
             if !task.tags.isEmpty {
                 Text(task.tags.map { "#\($0)" }.joined(separator: "  ")).font(AppTypography.caption).foregroundStyle(.tint).lineLimit(2)
             }
-            if !task.checklist.isEmpty {
-                Label("\(task.checklist.filter(\.isComplete).count)/\(task.checklist.count)", systemImage: "checklist")
+            if !task.subtaskList.isEmpty {
+                Label("\(task.subtaskList.filter { $0.status == .done }.count)/\(task.subtaskList.count) subtasks", systemImage: "list.bullet.indent")
                     .font(AppTypography.caption).foregroundStyle(.secondary)
             }
         }

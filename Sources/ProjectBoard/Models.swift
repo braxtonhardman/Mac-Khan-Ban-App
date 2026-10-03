@@ -30,6 +30,7 @@ final class Project {
     @Relationship(deleteRule: .cascade, inverse: \BoardTask.project)
     var tasks: [BoardTask]? = []
     var taskList: [BoardTask] { tasks ?? [] }
+    var topLevelTasks: [BoardTask] { taskList.filter { $0.parentTask == nil } }
 
     init(name: String, notes: String = "") {
         id = UUID()
@@ -37,7 +38,7 @@ final class Project {
         self.notes = notes
         createdAt = Date()
     }
-    var progress: Double { BoardRules.progress(statuses: taskList.map(\.status)) }
+    var progress: Double { BoardRules.progress(statuses: topLevelTasks.map(\.status)) }
 }
 
 @Model
@@ -49,10 +50,24 @@ final class BoardTask {
     var priorityValue: Int = 1
     var dueDate: Date?
     var tags: [String] = []
+    /// Retained temporarily so existing stores can convert V1 checklist rows into child tasks.
     var checklist: [ChecklistItem] = []
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     var project: Project?
+    var parentTask: BoardTask?
+    @Relationship(deleteRule: .cascade, inverse: \BoardTask.parentTask)
+    var subtasks: [BoardTask]? = []
+    /// Two offline devices can briefly produce the same deterministic migration record.
+    /// Treat matching UUIDs as one logical child and prefer the most recently edited copy.
+    var subtaskList: [BoardTask] {
+        var newestByID: [UUID: BoardTask] = [:]
+        for child in subtasks ?? [] {
+            if let current = newestByID[child.id], current.updatedAt >= child.updatedAt { continue }
+            newestByID[child.id] = child
+        }
+        return Array(newestByID.values)
+    }
 
     init(title: String, status: TaskStatus = .backlog, project: Project? = nil) {
         id = UUID()
@@ -65,6 +80,8 @@ final class BoardTask {
         createdAt = Date()
         updatedAt = Date()
         self.project = project
+        parentTask = nil
+        subtasks = []
     }
     var status: TaskStatus {
         get { TaskStatus(rawValue: statusValue) ?? .backlog }
@@ -73,6 +90,35 @@ final class BoardTask {
     var priority: TaskPriority {
         get { TaskPriority(rawValue: priorityValue) ?? .normal }
         set { priorityValue = newValue.rawValue }
+    }
+}
+
+/// Converts the original lightweight checklist values into full child tasks.
+/// Keeping the old field during this release lets existing local and CloudKit stores upgrade safely.
+@MainActor
+enum LegacyChecklistMigrator {
+    static func run(in context: ModelContext) throws {
+        let tasks = try context.fetch(FetchDescriptor<BoardTask>())
+        var changed = false
+
+        for parent in tasks where !parent.checklist.isEmpty {
+            let existingIDs = Set(parent.subtaskList.map(\.id))
+            for legacy in parent.checklist where !existingIDs.contains(legacy.id) {
+                let child = BoardTask(
+                    title: legacy.title,
+                    status: legacy.isComplete ? .done : .backlog,
+                    project: parent.project
+                )
+                child.id = legacy.id
+                child.parentTask = parent
+                context.insert(child)
+            }
+            parent.checklist = []
+            parent.updatedAt = Date()
+            changed = true
+        }
+
+        if changed { try StoreWriter.save(context) }
     }
 }
 

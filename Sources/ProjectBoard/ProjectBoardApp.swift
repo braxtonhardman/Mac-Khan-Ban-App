@@ -11,8 +11,10 @@ struct ProjectBoardApp: App {
         do {
             let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
             let configuration = ModelConfiguration(schema: schema, cloudKitDatabase: SyncStatus.isCloudBuild ? .private(SyncStatus.containerIdentifier) : .none)
-            container = try ModelContainer(for: schema, configurations: [configuration])
-            container?.mainContext.autosaveEnabled = false
+            let openedContainer = try ModelContainer(for: schema, configurations: [configuration])
+            openedContainer.mainContext.autosaveEnabled = false
+            try LegacyChecklistMigrator.run(in: openedContainer.mainContext)
+            container = openedContainer
             startupError = nil
         } catch {
             container = nil

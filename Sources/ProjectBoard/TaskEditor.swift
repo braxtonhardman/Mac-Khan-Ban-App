@@ -10,6 +10,7 @@ struct TaskEditor: View {
     @Environment(\.dismiss) private var dismiss
     let project: Project
     let task: BoardTask?
+    let parentTask: BoardTask?
     @State private var title: String
     @State private var details: String
     @State private var status: TaskStatus
@@ -20,26 +21,34 @@ struct TaskEditor: View {
     @Query private var profiles: [AppProfile]
     @Query private var allTasks: [BoardTask]
     @State private var tags: [String]
-    @State private var checklist: [ChecklistItem]
-    @State private var newItem = ""
+    @State private var draftTask: BoardTask?
+    @State private var subtaskEditor: TaskEditRequest?
     @State private var error: String?
     @State private var confirmingDeletion = false
 
-    init(project: Project, task: BoardTask?, initialStatus: TaskStatus) {
+    init(project: Project, task: BoardTask?, initialStatus: TaskStatus, parentTask: BoardTask? = nil) {
         self.project = project
         self.task = task
+        self.parentTask = task?.parentTask ?? parentTask
         _title = State(initialValue: task?.title ?? "")
         _details = State(initialValue: task?.details ?? "")
         _status = State(initialValue: task?.status ?? initialStatus)
         _priority = State(initialValue: task?.priority ?? .normal)
         _dueDate = State(initialValue: task?.dueDate)
         _tags = State(initialValue: TagRules.normalized(task?.tags ?? []))
-        _checklist = State(initialValue: task?.checklist ?? [])
+        _draftTask = State(initialValue: nil)
     }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(task == nil ? "New Task" : "Edit Task").font(AppTypography.pageTitle)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(editorTitle).font(AppTypography.pageTitle)
+                    if let parentTask {
+                        Label("Subtask of “\(parentDisplayTitle(parentTask))”", systemImage: "arrow.turn.up.left")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
                 Text(project.name).font(AppTypography.contextTitle).foregroundStyle(.secondary).lineLimit(1)
                 if let task {
@@ -54,7 +63,7 @@ struct TaskEditor: View {
                         Button("Delete Task", role: .destructive, action: deleteTask)
                         Button("Cancel", role: .cancel) {}
                     } message: {
-                        Text("This permanently deletes the task and its checklist. This cannot be undone.")
+                        Text("This permanently deletes the task and any subtasks beneath it. This cannot be undone.")
                     }
                 }
             }.padding(20)
@@ -85,35 +94,96 @@ struct TaskEditor: View {
                 AppSection("Tags") {
                     TagSelector(selection: $tags, available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
                 }
-                AppSection("Checklist") {
-                    ForEach($checklist) { $item in
-                        HStack {
-                            Toggle("Complete", isOn: $item.isComplete).labelsHidden()
-                                .accessibilityLabel("Complete \(item.title)")
-                            TextField("Subtask", text: $item.title)
-                            Button {
-                                checklist.removeAll { $0.id == item.id }
-                            } label: { Image(systemName: "minus.circle") }
-                                .buttonStyle(.borderless).help("Remove subtask")
-                        }
-                    }
-                    HStack {
-                        TextField("Add a subtask", text: $newItem).onSubmit(addItem)
-                        Button("Add", action: addItem)
-                            .disabled(newItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
+                subtasksSection
             }.formStyle(.grouped)
             if let error { Text(error).foregroundStyle(.red).padding(.horizontal) }
             Divider()
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save Task", action: save).keyboardShortcut(.defaultAction)
+                Button(saveButtonTitle, action: save).keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }.padding(20)
-        }.modifier(EditorSizing(width: 560, height: 690))
+        }
+        .modifier(EditorSizing(width: 560, height: 690))
+        .sheet(item: $subtaskEditor) { request in
+            TaskEditor(
+                project: project,
+                task: request.task,
+                initialStatus: request.status,
+                parentTask: request.parentTask
+            )
+        }
+    }
+
+    private var editorTitle: String {
+        if parentTask != nil { return task == nil ? "New Subtask" : "Edit Subtask" }
+        return task == nil ? "New Task" : "Edit Task"
+    }
+
+    private var saveButtonTitle: String { parentTask == nil ? "Save Task" : "Save Subtask" }
+
+    @ViewBuilder
+    private var subtasksSection: some View {
+        if parentTask == nil {
+            let owner = task ?? draftTask
+            let subtasks = (owner?.subtaskList ?? []).sorted { $0.createdAt < $1.createdAt }
+            let completed = subtasks.filter { $0.status == .done }.count
+            AppSection("Subtasks \(completed)/\(subtasks.count)") {
+                ForEach(subtasks) { subtask in
+                    HStack(spacing: 10) {
+                        Button {
+                            toggleCompletion(subtask)
+                        } label: {
+                            Image(systemName: subtask.status == .done ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(subtask.status == .done ? Color.accentColor : Color.secondary)
+                                .font(AppTypography.sectionTitle)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(subtask.status == .done ? "Mark \(subtask.title) incomplete" : "Mark \(subtask.title) complete")
+
+                        Button {
+                            subtaskEditor = .init(task: subtask, status: subtask.status, parentTask: owner)
+                        } label: {
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(subtask.title)
+                                        .font(AppTypography.itemTitle)
+                                        .foregroundStyle(.primary)
+                                        .strikethrough(subtask.status == .done)
+                                    HStack(spacing: 8) {
+                                        Text(appearance.title(for: subtask.status))
+                                        Text(subtask.priority.title)
+                                        if let dueDate = subtask.dueDate {
+                                            Label(dueDate.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                                        }
+                                    }
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Image(systemName: "chevron.right")
+                                    .font(AppTypography.smallIcon)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open subtask \(subtask.title)")
+                    }
+                    .padding(.vertical, 3)
+                }
+
+                Button {
+                    let parent = owner ?? makeDraftParent()
+                    subtaskEditor = .init(task: nil, status: .backlog, parentTask: parent)
+                } label: {
+                    Label("Add Subtask", systemImage: "plus")
+                }
+            }
+        }
     }
     private var dueDateField: some View {
         HStack {
@@ -160,29 +230,43 @@ struct TaskEditor: View {
         }
     }
 
-    private func addItem() {
-        let text = newItem.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        checklist.append(ChecklistItem(title: text))
-        newItem = ""
+    private func toggleCompletion(_ subtask: BoardTask) {
+        subtask.status = subtask.status == .done ? .backlog : .done
+        subtask.updatedAt = Date()
+        do { try StoreWriter.save(context) }
+        catch { self.error = error.localizedDescription }
     }
     private func deleteTask() {
         guard let task else { return }
+        if task.modelContext == nil {
+            task.parentTask = nil
+            dismiss()
+            return
+        }
         context.delete(task)
         do { try StoreWriter.save(context); dismiss() }
         catch { self.error = error.localizedDescription }
     }
 
     private func save() {
-        addItem()
-        let item = task ?? BoardTask(title: "", project: project)
-        if task == nil { context.insert(item) }
-        item.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        item.details = details
-        item.status = status
-        item.priority = priority
-        item.dueDate = dueDate
-        item.tags = TagRules.normalized(tags)
+        let defersPersistence = parentTask?.modelContext == nil
+        let item = task ?? draftTask ?? BoardTask(title: "", project: defersPersistence ? nil : project)
+        item.parentTask = parentTask
+        applyEditorValues(to: item)
+
+        // A child of an unsaved parent stays in memory until the parent task is saved.
+        // This keeps Cancel on the higher-level New Task sheet free of persistence side effects.
+        if let parentTask, defersPersistence {
+            if !(parentTask.subtasks ?? []).contains(where: { $0 === item }) {
+                parentTask.subtasks = (parentTask.subtasks ?? []) + [item]
+            }
+            dismiss()
+            return
+        }
+
+        item.project = project
+        for child in item.subtaskList { child.project = project }
+        if item.modelContext == nil { context.insert(item) }
         if !tags.isEmpty {
             let profile = AppProfile.current(in: profiles) ?? AppProfile(stageNames: appearance.stageNames, accent: appearance.accent)
             if profile.modelContext == nil {
@@ -191,14 +275,31 @@ struct TaskEditor: View {
             }
             profile.tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags) + tags)
         }
-        item.checklist = checklist.compactMap {
-            var copy = $0
-            copy.title = copy.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            return copy.title.isEmpty ? nil : copy
-        }
         item.updatedAt = Date()
         do { try StoreWriter.save(context); dismiss() }
         catch { self.error = error.localizedDescription }
+    }
+
+    private func makeDraftParent() -> BoardTask {
+        let parent = BoardTask(title: "", status: status)
+        applyEditorValues(to: parent)
+        draftTask = parent
+        return parent
+    }
+
+    private func parentDisplayTitle(_ parent: BoardTask) -> String {
+        let cleanTitle = parent.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleanTitle.isEmpty ? "New Task" : cleanTitle
+    }
+
+    private func applyEditorValues(to item: BoardTask) {
+        item.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.details = details
+        item.status = status
+        item.priority = priority
+        item.dueDate = dueDate
+        item.tags = TagRules.normalized(tags)
+        item.updatedAt = Date()
     }
 }
 
