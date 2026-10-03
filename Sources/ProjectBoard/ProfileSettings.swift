@@ -131,10 +131,14 @@ struct ProfileSettingsView: View {
                 .formStyle(.grouped)
                 if let error { Text(error).foregroundStyle(.red).padding(.horizontal) }
                 HStack {
-                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                    Button("Cancel") { dismiss() }
+                        .appGlassButton()
+                        .keyboardShortcut(.cancelAction)
                     Spacer()
-                    Button("Save") { save() }.keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent).disabled(draft.validationError != nil)
+                    Button("Save") { save() }
+                        .appGlassButton(accent: true)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(draft.validationError != nil)
                 }.padding(20)
             }
         }
@@ -156,9 +160,8 @@ struct ProfileSettingsView: View {
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark").font(AppTypography.smallIcon)
-                        .frame(width: 30, height: 30)
                 }
-                .buttonStyle(.borderless)
+                .appGlassButton(shape: .circle)
                 .accessibilityLabel("Close Settings")
             }
         }
@@ -280,7 +283,9 @@ private struct AccountIntegrationView: View {
             HStack {
                 Text(integration.title).font(AppTypography.pageTitle)
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Done") { dismiss() }
+                    .appGlassButton(accent: true)
+                    .keyboardShortcut(.cancelAction)
             }
             Image(systemName: integration.icon)
                 .font(.system(size: 46))
@@ -296,7 +301,7 @@ private struct AccountIntegrationView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("Connect \(integration.title)") {}
-                .buttonStyle(.borderedProminent)
+                .appGlassButton(accent: true)
                 .disabled(true)
         }
         .padding(24)

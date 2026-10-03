@@ -39,36 +39,95 @@ struct TaskEditor: View {
         _draftTask = State(initialValue: nil)
     }
     var body: some View {
+        Group {
+            #if os(iOS)
+            NavigationStack {
+                editorLayout
+                    .navigationTitle(editorTitle)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        EditorToolbarActions(
+                            confirmationTitle: task == nil ? "Create" : "Save",
+                            canConfirm: !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                            cancel: { dismiss() },
+                            confirm: save
+                        )
+                    }
+            }
+            .presentationDetents([.large])
+            #else
+            editorLayout
+            #endif
+        }
+        .modifier(EditorSizing(width: 560, height: 690))
+        .confirmationDialog("Delete “\(task?.title ?? "task")”?", isPresented: $confirmingDeletion, titleVisibility: .visible) {
+            Button("Delete Task", role: .destructive, action: deleteTask)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the task and any subtasks beneath it. This cannot be undone.")
+        }
+        .sheet(item: $subtaskEditor) { request in
+            TaskEditor(
+                project: project,
+                task: request.task,
+                initialStatus: request.status,
+                parentTask: request.parentTask
+            )
+        }
+    }
+
+    private var editorLayout: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
+            #if os(macOS)
+            VStack(spacing: 12) {
+                ZStack {
                     Text(editorTitle).font(AppTypography.pageTitle)
+                    HStack {
+                        Button { dismiss() } label: { Image(systemName: "xmark") }
+                            .appGlassButton(shape: .circle)
+                            .keyboardShortcut(.cancelAction)
+                            .accessibilityLabel("Cancel")
+                        Spacer()
+                        Button(task == nil ? "Create" : "Save", action: save)
+                            .appGlassButton(accent: true)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+                HStack(spacing: 12) {
                     if let parentTask {
                         Label("Subtask of “\(parentDisplayTitle(parentTask))”", systemImage: "arrow.turn.up.left")
                             .font(AppTypography.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
-                Spacer()
-                Text(project.name).font(AppTypography.contextTitle).foregroundStyle(.secondary).lineLimit(1)
-                if let task {
-                    Button("Delete Task", systemImage: "trash", role: .destructive) {
-                        confirmingDeletion = true
-                    }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .help("Delete Task")
-                    .accessibilityLabel("Delete Task")
-                    .confirmationDialog("Delete “\(task.title)”?", isPresented: $confirmingDeletion, titleVisibility: .visible) {
-                        Button("Delete Task", role: .destructive, action: deleteTask)
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This permanently deletes the task and any subtasks beneath it. This cannot be undone.")
+                    Spacer()
+                    Text(project.name).font(AppTypography.contextTitle).foregroundStyle(.secondary).lineLimit(1)
+                    if task != nil {
+                        Button("Delete Task", systemImage: "trash", role: .destructive) {
+                            confirmingDeletion = true
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help("Delete Task")
+                        .accessibilityLabel("Delete Task")
                     }
                 }
-            }.padding(20)
+            }
+            .padding(20)
             Divider()
+            #endif
             Form {
+                #if os(iOS)
+                Section {
+                    Label(project.name, systemImage: "rectangle.3.group")
+                        .font(AppTypography.contextTitle)
+                    if let parentTask {
+                        Label("Subtask of “\(parentDisplayTitle(parentTask))”", systemImage: "arrow.turn.up.left")
+                            .font(AppTypography.supporting)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                #endif
                 AppSection("Task") {
                     TextField("Title", text: $title)
                     Picker("Status", selection: $status) {
@@ -95,25 +154,17 @@ struct TaskEditor: View {
                     TagSelector(selection: $tags, available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
                 }
                 subtasksSection
+                #if os(iOS)
+                if task != nil {
+                    Section {
+                        Button("Delete Task", systemImage: "trash", role: .destructive) {
+                            confirmingDeletion = true
+                        }
+                    }
+                }
+                #endif
             }.formStyle(.grouped)
             if let error { Text(error).foregroundStyle(.red).padding(.horizontal) }
-            Divider()
-            HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button(saveButtonTitle, action: save).keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }.padding(20)
-        }
-        .modifier(EditorSizing(width: 560, height: 690))
-        .sheet(item: $subtaskEditor) { request in
-            TaskEditor(
-                project: project,
-                task: request.task,
-                initialStatus: request.status,
-                parentTask: request.parentTask
-            )
         }
     }
 
@@ -121,8 +172,6 @@ struct TaskEditor: View {
         if parentTask != nil { return task == nil ? "New Subtask" : "Edit Subtask" }
         return task == nil ? "New Task" : "Edit Task"
     }
-
-    private var saveButtonTitle: String { parentTask == nil ? "Save Task" : "Save Subtask" }
 
     @ViewBuilder
     private var subtasksSection: some View {
@@ -182,6 +231,7 @@ struct TaskEditor: View {
                 } label: {
                     Label("Add Subtask", systemImage: "plus")
                 }
+                .appGlassButton(accent: true)
             }
         }
     }
@@ -211,11 +261,12 @@ struct TaskEditor: View {
                         .datePickerStyle(.graphical)
                     HStack {
                         Button("Cancel") { showingDatePicker = false }
+                            .appGlassButton()
                         Spacer()
                         Button("Set Date") {
                             dueDate = proposedDate
                             showingDatePicker = false
-                        }.buttonStyle(.borderedProminent)
+                        }.appGlassButton(accent: true)
                     }
                 }.padding().frame(width: 320)
             }

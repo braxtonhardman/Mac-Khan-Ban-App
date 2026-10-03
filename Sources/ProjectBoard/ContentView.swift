@@ -1,5 +1,10 @@
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 #if SWIFT_PACKAGE
 import BoardCore
 #endif
@@ -21,14 +26,40 @@ struct ContentView: View {
     @State private var deleting: Project?
     @State private var error: String?
 
-    private let projectIndent: CGFloat = 48
+    private let projectIndent: CGFloat = 28
+    #if os(iOS)
+    private let areaHeaderSpacing: CGFloat = 11
+    #else
+    private let areaHeaderSpacing: CGFloat = 7
+    #endif
 
     private var selected: Project? { projects.first { $0.id == selection } }
+    private var hasUnassignedProjects: Bool { projects.contains { $0.area == nil } }
+    private var navigationColumnVisibility: Binding<NavigationSplitViewVisibility> {
+        #if os(macOS)
+        Binding(get: { .all }, set: { _ in })
+        #else
+        $columnVisibility
+        #endif
+    }
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: navigationColumnVisibility) {
+            Group {
+            #if os(macOS)
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(areas) { area in areaGroup(area) }
+                    if hasUnassignedProjects { areaGroup(nil) }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 12)
+            }
+            #else
             List(selection: $selection) {
-                areaGroup(nil)
                 ForEach(areas) { area in areaGroup(area) }
+                if hasUnassignedProjects { areaGroup(nil) }
+            }
+            #endif
             }
             .contextMenu {
                 Button("New Area…") { areaEditor = .init(area: nil) }
@@ -37,7 +68,7 @@ struct ContentView: View {
             #if os(iOS)
             .navigationTitle("Workspace")
             .listStyle(.insetGrouped)
-            .listSectionSpacing(16)
+            .listSectionSpacing(14)
             .contentMargins(.top, 24, for: .scrollContent)
             #endif
             #if os(macOS)
@@ -49,13 +80,7 @@ struct ContentView: View {
                     Text("Workspace").font(AppTypography.pageTitle).lineLimit(1)
                     Spacer()
                     creationMenu
-                    Button {
-                        withAnimation { columnVisibility = .detailOnly }
-                    } label: { Image(systemName: "sidebar.left") }
-                        .help("Hide Sidebar")
-                        .accessibilityLabel("Hide Sidebar")
                 }
-                .buttonStyle(.borderless)
                 .padding(.horizontal, 16)
                 .padding(.top, isFullScreen ? 20 : 10)
                 .padding(.bottom, 16)
@@ -74,7 +99,7 @@ struct ContentView: View {
         } detail: {
             Group {
                 if let selected {
-                    ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected }, showSidebar: columnVisibility == .detailOnly ? { withAnimation { columnVisibility = .all } } : nil)
+                    ProjectBoardView(project: selected, editProject: { projectEditor = .init(project: selected) }, deleteProject: { deleting = selected })
                         .id(selected.id)
                 } else {
                     ContentUnavailableView {
@@ -82,7 +107,8 @@ struct ContentView: View {
                     } description: {
                         Text("Create a project, capture tasks, and move them toward done.")
                     } actions: {
-                        Button("Create Project") { projectEditor = .init(project: nil) }.buttonStyle(.borderedProminent)
+                        Button("Create Project") { projectEditor = .init(project: nil) }
+                            .buttonStyle(.borderedProminent)
                     }
                 }
             }
@@ -98,16 +124,7 @@ struct ContentView: View {
         .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
         .overlay(alignment: .topTrailing) {
-            HStack(spacing: 16) {
-                if selected == nil && columnVisibility == .detailOnly {
-                    Button { withAnimation { columnVisibility = .all } } label: {
-                        Label("Show Sidebar", systemImage: "sidebar.left")
-                    }
-                }
-                profileButton
-            }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
+            profileButton
             .padding(.horizontal, 20)
             .padding(.top, 20 + (isFullScreen ? 32 : 0))
         }
@@ -165,6 +182,7 @@ struct ContentView: View {
                 .font(AppTypography.controlIcon)
         }
         .labelStyle(.iconOnly)
+        .appGlassButton(size: .large, shape: .icon, accent: true)
         .help("Profile & Settings")
         .accessibilityLabel("Profile & Settings")
     }
@@ -176,24 +194,27 @@ struct ContentView: View {
             Button("New Area…") { areaEditor = .init(area: nil) }
         } label: {
             Label("Create Project or Area", systemImage: "plus.rectangle.on.folder")
-                #if os(iOS)
                 .font(AppTypography.controlIcon)
-                .frame(width: 56, height: 56)
-                .background(.regularMaterial, in: Circle())
-                .overlay { Circle().strokeBorder(.quaternary, lineWidth: 0.5) }
-                .contentShape(Circle())
-                #endif
         }
-            .labelStyle(.iconOnly)
-            .help("Create Project or Area")
+        .labelStyle(.iconOnly)
+        #if os(iOS)
+        .appGlassButton(shape: .icon, accent: true)
+        #else
+        .appGlassButton(size: .small, shape: .icon, accent: true)
+        #endif
+        .help("Create Project or Area")
     }
 
     @ViewBuilder
     private func areaGroup(_ area: ProjectArea?) -> some View {
         #if os(iOS)
-        Section { areaContents(area) }
+        Section {
+            areaContents(area)
+        }
         #else
-        areaContents(area)
+        VStack(spacing: 0) {
+            areaContents(area)
+        }
         #endif
     }
 
@@ -216,6 +237,16 @@ struct ContentView: View {
             if children.isEmpty && area != nil {
                 Text("No projects yet").font(AppTypography.caption).foregroundStyle(.secondary)
                     .padding(.leading, projectIndent)
+                    #if os(macOS)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .listRowBackground(Color.clear)
+                    #else
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+                    #endif
+                    .listRowInsets(.init(top: 2, leading: 16, bottom: 2, trailing: 12))
+                    .listRowSeparator(.hidden)
             }
         }
     }
@@ -232,42 +263,68 @@ struct ContentView: View {
                 toggle(key, in: &collapsedAreas)
             }
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "square.stack.3d.up")
-                    .font(AppTypography.body)
+            HStack(spacing: areaHeaderSpacing) {
+                Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
+                    .font(AppTypography.sidebarDisclosureIcon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12)
+                Image(systemName: "folder")
+                    .font(AppTypography.sidebarAreaIcon)
                     .foregroundStyle(.tint)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 20)
                     .accessibilityHidden(true)
                 Text(name)
-                    .font(AppTypography.sectionTitle)
+                    .font(AppTypography.sidebarAreaTitle)
                     .foregroundStyle(.primary)
-                    .padding(.bottom, 7)
-                    .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .fill(.secondary.opacity(0.18))
-                            .frame(height: 0.5)
-                            .accessibilityHidden(true)
-                    }
                 Spacer(minLength: 0)
-                Image(systemName: isCollapsed(key) ? "chevron.right" : "chevron.down")
-                    .font(AppTypography.smallIcon)
-                    .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 5)
+            #if os(macOS)
+            .padding(.horizontal, 6)
+            #endif
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowInsets(.init(top: 2, leading: 14, bottom: 2, trailing: 12))
+        #if os(iOS)
+        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+        #else
+        .listRowBackground(Color.clear)
+        #endif
         .listRowSeparator(.hidden)
         .accessibilityLabel("\(isCollapsed(key) ? "Expand" : "Collapse") \(name)")
     }
+    @ViewBuilder
     private func projectRow(_ project: Project) -> some View {
-        NavigationLink(value: project.id) {
-            Text(project.name).font(AppTypography.body)
-                .foregroundStyle(.primary.opacity(0.85))
-                .padding(.vertical, 4)
-                .padding(.leading, projectIndent)
+        Group {
+            #if os(iOS)
+            NavigationLink(value: project.id) {
+                projectRowLabel(project)
+            }
+            .tag(project.id)
+            #else
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
+                    selection = project.id
+                }
+            } label: {
+                projectRowLabel(project)
+            }
+            #endif
         }
-        .tag(project.id)
+        .buttonStyle(.plain)
+        #if os(iOS)
+        .listRowInsets(.init(top: 1, leading: 8, bottom: 1, trailing: 18))
+        #else
+        .listRowInsets(.init(top: 1, leading: 8, bottom: 1, trailing: 8))
+        #endif
+        #if os(iOS)
+        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+        #else
+        .listRowBackground(Color.clear)
+        #endif
+        .listRowSeparator(.hidden)
+        .accessibilityAddTraits(selection == project.id ? .isSelected : [])
         .contextMenu {
             Button("Edit Project…") { projectEditor = .init(project: project) }
             Menu("Move to Area") {
@@ -280,6 +337,34 @@ struct ContentView: View {
             Button("Delete Project…", role: .destructive) { deleting = project }
         }
     }
+
+    private func projectRowLabel(_ project: Project) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "rectangle.3.group")
+                .font(AppTypography.smallIcon)
+                .foregroundStyle(selection == project.id ? Color.accentColor : Color.secondary)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            Text(project.name)
+                .font(AppTypography.body)
+                #if os(iOS)
+                .foregroundStyle(selection == project.id ? Color.accentColor : Color.primary)
+                #else
+                .foregroundStyle(selection == project.id ? .primary : .secondary)
+                #endif
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, projectIndent)
+        .padding(.vertical, 6)
+        .padding(.trailing, 8)
+        .contentShape(Rectangle())
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(selection == project.id ? Color.accentColor.opacity(0.14) : Color.clear)
+        )
+    }
+
     private func saveChanges() {
         do { try StoreWriter.save(context) }
         catch { self.error = error.localizedDescription }
@@ -312,35 +397,96 @@ struct ProjectEditor: View {
         _notes = State(initialValue: project?.notes ?? "")
     }
     var body: some View {
-        WorkspaceItemEditor(kind: "Project", isNew: project == nil, name: $name,
+        WorkspaceItemEditor(kind: "Project", icon: "rectangle.3.group", isNew: project == nil, name: $name,
+                            guidance: "Give the project a clear home and enough context to get started.",
                             error: error, save: save) {
-            #if os(iOS)
-            AppSection("Area") { areaPicker.pickerStyle(.menu) }
-            AppSection("Description") { descriptionEditor }
-            #else
-            areaPicker
-            Text("Description").font(AppTypography.sectionTitle)
-            descriptionEditor
-            #endif
+            WorkspaceEditorCard("Project details") {
+                HStack(spacing: 12) {
+                    Label("Area", systemImage: "folder")
+                        .font(AppTypography.body)
+                    Spacer(minLength: 12)
+                    areaPicker
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Description", systemImage: "text.alignleft")
+                        .font(AppTypography.body)
+                    ZStack(alignment: .topLeading) {
+                        if notes.isEmpty {
+                            Text("What is this project about?")
+                                .font(AppTypography.body)
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 8)
+                                .allowsHitTesting(false)
+                        }
+                        descriptionEditor
+                    }
+                }
+            }
         }
+        #if os(iOS)
+        .presentationDetents([.large])
+        #endif
     }
 
-    private var areaPicker: some View {
+    @ViewBuilder private var areaPicker: some View {
+        #if os(macOS)
+        Menu {
+            Button {
+                areaID = nil
+            } label: {
+                if areaID == nil {
+                    Label("Unassigned", systemImage: "checkmark")
+                } else {
+                    Text("Unassigned")
+                }
+            }
+            ForEach(areas) { area in
+                Button {
+                    areaID = area.id
+                } label: {
+                    if areaID == area.id {
+                        Label(area.name, systemImage: "checkmark")
+                    } else {
+                        Text(area.name)
+                    }
+                }
+            }
+        } label: {
+            Text("\(selectedAreaName)  \(Image(systemName: "chevron.up.chevron.down"))")
+                .font(AppTypography.body)
+                .foregroundStyle(Color.accentColor)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Area")
+        #else
         Picker("Area", selection: $areaID) {
             Text("Unassigned").tag(nil as UUID?)
             ForEach(areas) { Text($0.name).tag(Optional($0.id)) }
         }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .tint(Color.accentColor)
+        #endif
+    }
+
+    private var selectedAreaName: String {
+        areas.first { $0.id == areaID }?.name ?? "Unassigned"
     }
 
     private var descriptionEditor: some View {
+        #if os(macOS)
+        MacDescriptionEditor(text: $notes)
+            .frame(height: 100)
+        #else
         TextEditor(text: $notes)
             .scrollContentBackground(.hidden)
             .accessibilityLabel("Project description")
-            #if os(iOS)
             .frame(minHeight: 140)
-            #else
-            .frame(height: 100).border(.quaternary)
-            #endif
+        #endif
     }
 
     private func save() {
@@ -356,6 +502,60 @@ struct ProjectEditor: View {
     }
 
 }
+
+#if os(macOS)
+/// Uses an overlay scroller so short descriptions stay visually clean while long text still scrolls.
+private struct MacDescriptionEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+
+        let textView = NSTextView()
+        textView.delegate = context.coordinator
+        textView.string = text
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.font = NSFont.preferredFont(forTextStyle: .body)
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .controlAccentColor
+        textView.textContainerInset = NSSize(width: 5, height: 8)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.setAccessibilityLabel("Project description")
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
+        textView.string = text
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding private var text: String
+
+        init(text: Binding<String>) { _text = text }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text = textView.string
+        }
+    }
+}
+#endif
 
 struct TaskEditRequest: Identifiable {
     let id = UUID()
@@ -381,7 +581,6 @@ struct ProjectBoardView: View {
     @Bindable var project: Project
     let editProject: () -> Void
     let deleteProject: () -> Void
-    let showSidebar: (() -> Void)?
     @State private var editor: TaskEditRequest?
     @State private var calendarTask: BoardTask?
     @State private var deleting: BoardTask?
@@ -397,13 +596,10 @@ struct ProjectBoardView: View {
                         .lineLimit(2)
                         .textSelection(.enabled)
                     Spacer()
-                    if let showSidebar {
-                        Button(action: showSidebar) { Image(systemName: "sidebar.left") }
-                            .help("Show Sidebar").accessibilityLabel("Show Sidebar")
-                    }
                     projectOptions
-                }.buttonStyle(.borderless)
-                    .padding(.trailing, 46) // Reserve the fixed Profile control at the window edge.
+                }
+                .buttonStyle(.borderless)
+                .padding(.trailing, 46) // Reserve the fixed Profile control at the window edge.
                 #endif
                 if !project.notes.isEmpty { Text(project.notes).foregroundStyle(.secondary).lineLimit(2) }
                 HStack {
@@ -475,12 +671,10 @@ struct ProjectBoardView: View {
             Button("Delete Project…", role: .destructive, action: deleteProject)
         } label: { Label("Project Options", systemImage: "ellipsis.circle") }
             .labelStyle(.iconOnly)
+            .appGlassButton(size: .large, shape: .icon, accent: true)
             #if os(macOS)
-            .scaleEffect(1.6, anchor: .topTrailing)
             .padding(.leading, 18)
             .padding(.bottom, 8)
-            #else
-            .font(AppTypography.controlIcon)
             #endif
     }
 
@@ -599,18 +793,15 @@ private struct AreaEditor: View {
             || cleanName.localizedCaseInsensitiveCompare("Unassigned") == .orderedSame
     }
     var body: some View {
-        WorkspaceItemEditor(kind: "Area", isNew: area == nil, name: $name,
+        WorkspaceItemEditor(kind: "Area", icon: "folder", isNew: area == nil, name: $name,
+                            guidance: "Group related projects, such as Work, Personal, or Learning.",
                             validation: duplicate ? "Choose a different area name." : nil,
                             error: error, save: save) {
-            Text("Group related projects, such as Work, Personal, or Learning.")
-                #if os(iOS)
-                .font(AppTypography.supporting)
-                .listRowBackground(Color.clear)
-                #else
-                .font(AppTypography.caption)
-                #endif
-                .foregroundStyle(.secondary)
+            EmptyView()
         }
+        #if os(iOS)
+        .presentationDetents([.medium])
+        #endif
     }
 
     private func save() {
@@ -650,12 +841,15 @@ struct EditorSizing: ViewModifier {
 private struct WorkspaceItemEditor<Content: View>: View {
     @Environment(\.dismiss) private var dismiss
     let kind: String
+    let icon: String
     let isNew: Bool
     @Binding var name: String
+    var guidance: String? = nil
     var validation: String? = nil
     let error: String?
     let save: () -> Void
     @ViewBuilder var content: () -> Content
+    @FocusState private var nameIsFocused: Bool
 
     private var title: String { "\(isNew ? "New" : "Edit") \(kind)" }
     private var canSave: Bool {
@@ -664,48 +858,134 @@ private struct WorkspaceItemEditor<Content: View>: View {
     private var nameField: some View {
         TextField("\(kind) name", text: $name, prompt: Text("Enter \(kind.lowercased()) name"))
             .accessibilityLabel("\(kind) name")
+            .font(AppTypography.itemTitle)
+            .textFieldStyle(.plain)
+            .focused($nameIsFocused)
+            .onSubmit { if canSave { save() } }
             #if os(iOS)
             .textInputAutocapitalization(.sentences)
+            .submitLabel(.done)
             #endif
     }
     @ViewBuilder private var messages: some View {
         if let validation { Text(validation).foregroundStyle(.red) }
         if let error { Text(error).foregroundStyle(.red) }
     }
+
+    private var editorFields: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 44, weight: .regular))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .frame(height: 76)
+                    .accessibilityHidden(true)
+                if let guidance {
+                    Text(guidance)
+                        .font(AppTypography.supporting)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 320)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(kind) name")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                HStack(spacing: 12) {
+                    Image(systemName: icon)
+                        .font(AppTypography.itemTitle)
+                        .foregroundStyle(.tint)
+                        .frame(width: 22)
+                        .accessibilityHidden(true)
+                    nameField
+                    if !name.isEmpty {
+                        Button {
+                            name = ""
+                            nameIsFocused = true
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear \(kind.lowercased()) name")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 56)
+                .background(.background, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(nameIsFocused ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.08), lineWidth: 1)
+                }
+            }
+
+            content()
+            messages
+                .font(AppTypography.supporting)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     var body: some View {
         #if os(iOS)
         NavigationStack {
-            Form {
-                AppSection("\(kind) name") { nameField }
-                content()
-                messages
+            ScrollView {
+                editorFields
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 32)
             }
             .font(AppTypography.body)
-            .formStyle(.grouped)
+            .background(Color(uiColor: .systemGroupedBackground))
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isNew ? "Create" : "Save", action: save).disabled(!canSave)
-                }
+                EditorToolbarActions(
+                    confirmationTitle: isNew ? "Create" : "Save",
+                    canConfirm: canSave,
+                    cancel: { dismiss() },
+                    confirm: save
+                )
+            }
+            .task {
+                if isNew { nameIsFocused = true }
             }
         }
         #else
-        VStack(alignment: .leading, spacing: 16) {
-            Text(title).font(AppTypography.pageTitle)
-            nameField
-            content()
-            messages
-            HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Save", action: save).keyboardShortcut(.defaultAction).disabled(!canSave)
+        VStack(spacing: 0) {
+            ZStack {
+                Text(title).font(AppTypography.pageTitle)
+                HStack {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .appGlassButton(shape: .circle)
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Cancel")
+                    Spacer()
+                    Button(isNew ? "Create" : "Save", action: save)
+                        .appGlassButton(accent: true)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!canSave)
+                }
             }
-        }.padding(24).modifier(EditorSizing(width: 440))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            Divider()
+            ScrollView {
+                editorFields
+                    .padding(24)
+            }
+        }
+        .background(.background)
+        .modifier(EditorSizing(width: 540, height: kind == "Area" ? 440 : 650))
+        .task {
+            if isNew { nameIsFocused = true }
+        }
         #endif
     }
 }

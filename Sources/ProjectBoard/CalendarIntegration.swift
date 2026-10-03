@@ -85,17 +85,20 @@ struct CalendarDeadlineSheet: View {
                     .font(AppTypography.caption).foregroundStyle(.secondary)
             } else {
                 Button("Choose Calendar…") { Task { await integration.prepare(taskID: task.id) } }
+                    .appGlassButton()
                     .disabled(integration.busy)
                 Text("Calendar access is requested only when you choose a calendar.").font(AppTypography.caption).foregroundStyle(.secondary)
             }
             if integration.busy { ProgressView() }
             if let error = integration.error { Text(error).foregroundStyle(.red) }
             HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }
+                    .appGlassButton()
+                    .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(integration.hasExistingEvent ? "Update Event" : "Add Event") {
                     if integration.save(task: task) { dismiss() }
-                }.buttonStyle(.borderedProminent)
+                }.appGlassButton(accent: true)
                     .disabled(!integration.ready || task.dueDate == nil)
             }
         }.padding(24).modifier(EditorSizing(width: 460))

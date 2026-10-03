@@ -67,9 +67,12 @@ struct SyncStatusView: View {
             HStack {
                 if SyncStatus.isCloudBuild {
                     Button("Check Account") { Task { await status.refreshAccount() } }
+                        .appGlassButton()
                 }
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button("Done") { dismiss() }
+                    .appGlassButton(accent: true)
+                    .keyboardShortcut(.defaultAction)
             }
         }.padding(24).modifier(EditorSizing(width: 470))
     }
