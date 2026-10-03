@@ -47,14 +47,15 @@ struct AppSection<Content: View>: View {
     }
 }
 
-enum AppGlassButtonSize {
-    case small, medium, large
+enum AppGlassButtonSize: Equatable {
+    case small, medium, large, extraLarge
 
     var dimension: CGFloat {
         switch self {
         case .small: 32
         case .medium: 40
         case .large: 52
+        case .extraLarge: 60
         }
     }
 
@@ -63,7 +64,23 @@ enum AppGlassButtonSize {
         case .small: 12
         case .medium: 16
         case .large: 20
+        case .extraLarge: 24
         }
+    }
+
+    /// Optical space between a circular button's symbol and its outer edge.
+    /// The symbol size is derived from this value so callers never tune icons individually.
+    var circularContentInset: CGFloat {
+        switch self {
+        case .small: 8
+        case .medium: 12
+        case .large: 13
+        case .extraLarge: 15
+        }
+    }
+
+    var iconDimension: CGFloat {
+        dimension - (circularContentInset * 2)
     }
 
     var cornerRadius: CGFloat {
@@ -71,23 +88,21 @@ enum AppGlassButtonSize {
         case .small: 10
         case .medium: 12
         case .large: 16
+        case .extraLarge: 18
         }
     }
 
     var font: Font {
         switch self {
-        case .small: AppTypography.caption.weight(.semibold)
+        case .small: AppTypography.supporting.weight(.semibold)
         case .medium: AppTypography.body.weight(.semibold)
         case .large: AppTypography.itemTitle
+        case .extraLarge: AppTypography.sectionTitle
         }
     }
 
     var iconFont: Font {
-        switch self {
-        case .small: .system(size: 17, weight: .semibold)
-        case .medium: .system(size: 22, weight: .medium)
-        case .large: .system(size: 26, weight: .medium)
-        }
+        .system(size: iconDimension, weight: self == .small ? .semibold : .medium)
     }
 }
 
@@ -110,40 +125,53 @@ extension View {
                 .frame(width: size.dimension, height: size.dimension)
                 .contentShape(Rectangle())
         } else if #available(macOS 26.0, iOS 26.0, *) {
-            let glass = (accent ? Glass.regular.tint(Color.accentColor.opacity(0.35)) : Glass.regular).interactive()
+            let glass = Glass.regular.interactive()
             switch shape {
             case .icon:
                 EmptyView()
             case .circle:
                 self.buttonStyle(.plain)
-                    .font(size.font)
-                    .foregroundStyle(Color.primary)
+                    .font(size.iconFont)
+                    .foregroundStyle(Color.accentColor)
                     .frame(width: size.dimension, height: size.dimension)
+                    .contentShape(Circle())
                     .glassEffect(glass, in: .circle)
             case .square:
                 self.buttonStyle(.plain)
                     .font(size.font)
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(Color.accentColor)
                     .frame(width: size.dimension, height: size.dimension)
+                    .contentShape(RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous))
                     .glassEffect(glass, in: .rect(cornerRadius: size.cornerRadius))
             case .rectangle:
                 self.buttonStyle(.plain)
                     .font(size.font)
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(Color.accentColor)
+                    .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, size.horizontalPadding)
                     .frame(minHeight: size.dimension)
+                    .contentShape(RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous))
                     .glassEffect(glass, in: .rect(cornerRadius: size.cornerRadius))
             }
         } else {
             switch shape {
             case .icon:
                 EmptyView()
-            case .circle, .square:
+            case .circle:
                 self.buttonStyle(.bordered)
+                    .font(size.iconFont)
                     .frame(width: size.dimension, height: size.dimension)
+                    .buttonBorderShape(.circle)
+                    .tint(accent ? Color.accentColor : nil)
+            case .square:
+                self.buttonStyle(.bordered)
+                    .font(size.font)
+                    .frame(width: size.dimension, height: size.dimension)
+                    .buttonBorderShape(.roundedRectangle(radius: size.cornerRadius))
                     .tint(accent ? Color.accentColor : nil)
             case .rectangle:
                 self.buttonStyle(.bordered)
+                    .fixedSize(horizontal: true, vertical: false)
                     .frame(minHeight: size.dimension)
                     .tint(accent ? Color.accentColor : nil)
             }
@@ -157,19 +185,34 @@ struct EditorToolbarActions: ToolbarContent {
     let cancel: () -> Void
     let confirm: () -> Void
 
+    @ToolbarContentBuilder
     var body: some ToolbarContent {
-        ToolbarItem(placement: .cancellationAction) {
-            Button(action: cancel) {
-                Image(systemName: "xmark")
-            }
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .cancellationAction) { cancelButton }
+                .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .confirmationAction) { confirmationButton }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .cancellationAction) { cancelButton }
+            ToolbarItem(placement: .confirmationAction) { confirmationButton }
+        }
+        #else
+        ToolbarItem(placement: .cancellationAction) { cancelButton }
+        ToolbarItem(placement: .confirmationAction) { confirmationButton }
+        #endif
+    }
+
+    private var cancelButton: some View {
+        Button(action: cancel) { Image(systemName: "xmark") }
             .appGlassButton(shape: .circle)
             .accessibilityLabel("Cancel")
-        }
-        ToolbarItem(placement: .confirmationAction) {
-            Button(confirmationTitle, action: confirm)
-                .appGlassButton(accent: true)
-                .disabled(!canConfirm)
-        }
+    }
+
+    private var confirmationButton: some View {
+        Button(confirmationTitle, action: confirm)
+            .appGlassButton(size: .small, shape: .rectangle, accent: true)
+            .disabled(!canConfirm)
     }
 }
 

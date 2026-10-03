@@ -89,7 +89,7 @@ struct TaskEditor: View {
                             .accessibilityLabel("Cancel")
                         Spacer()
                         Button(task == nil ? "Create" : "Save", action: save)
-                            .appGlassButton(accent: true)
+                            .appGlassButton(size: .small, shape: .rectangle, accent: true)
                             .keyboardShortcut(.defaultAction)
                             .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }

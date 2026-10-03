@@ -87,7 +87,7 @@ struct ContentView: View {
             }
             #else
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { profileButton }
+                profileToolbarItem
             }
             .contentMargins(.bottom, 88, for: .scrollContent)
             .overlay(alignment: .bottomTrailing) {
@@ -108,7 +108,7 @@ struct ContentView: View {
                         Text("Create a project, capture tasks, and move them toward done.")
                     } actions: {
                         Button("Create Project") { projectEditor = .init(project: nil) }
-                            .buttonStyle(.borderedProminent)
+                            .appGlassButton(shape: .rectangle, accent: true)
                     }
                 }
             }
@@ -116,7 +116,7 @@ struct ContentView: View {
             .padding(.top, isFullScreen ? 32 : 0)
             #else
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { profileButton }
+                profileToolbarItem
             }
             #endif
         }
@@ -182,10 +182,22 @@ struct ContentView: View {
                 .font(AppTypography.controlIcon)
         }
         .labelStyle(.iconOnly)
-        .appGlassButton(size: .large, shape: .icon, accent: true)
+        .appGlassButton(size: .large, shape: .circle)
         .help("Profile & Settings")
         .accessibilityLabel("Profile & Settings")
     }
+
+    #if os(iOS)
+    @ToolbarContentBuilder
+    private var profileToolbarItem: some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .topBarTrailing) { profileButton }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarTrailing) { profileButton }
+        }
+    }
+    #endif
 
     private var creationMenu: some View {
         Menu {
@@ -197,11 +209,7 @@ struct ContentView: View {
                 .font(AppTypography.controlIcon)
         }
         .labelStyle(.iconOnly)
-        #if os(iOS)
-        .appGlassButton(shape: .icon, accent: true)
-        #else
-        .appGlassButton(size: .small, shape: .icon, accent: true)
-        #endif
+        .appGlassButton(size: .extraLarge, shape: .circle)
         .help("Create Project or Area")
     }
 
@@ -645,7 +653,7 @@ struct ProjectBoardView: View {
         #endif
         #if os(iOS)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { projectOptions }
+            projectOptionsToolbarItem
         }
         #endif
         .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
@@ -671,12 +679,24 @@ struct ProjectBoardView: View {
             Button("Delete Project…", role: .destructive, action: deleteProject)
         } label: { Label("Project Options", systemImage: "ellipsis.circle") }
             .labelStyle(.iconOnly)
-            .appGlassButton(size: .large, shape: .icon, accent: true)
+            .appGlassButton(size: .large, shape: .circle)
             #if os(macOS)
             .padding(.leading, 18)
             .padding(.bottom, 8)
             #endif
     }
+
+    #if os(iOS)
+    @ToolbarContentBuilder
+    private var projectOptionsToolbarItem: some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .topBarLeading) { projectOptions }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarLeading) { projectOptions }
+        }
+    }
+    #endif
 
     private func column(_ status: TaskStatus, width: CGFloat, height: CGFloat) -> some View {
         let tasks = project.topLevelTasks.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
@@ -689,7 +709,9 @@ struct ProjectBoardView: View {
                 Text("\(tasks.count)").foregroundStyle(.secondary)
                 Spacer()
                 Button { editor = .init(status: status) } label: { Image(systemName: "plus") }
-                    .buttonStyle(.borderless).help("Add task to \(appearance.title(for: status))")
+                    .appGlassButton(size: .small, shape: .circle)
+                    .help("Add task to \(appearance.title(for: status))")
+                    .accessibilityLabel("Add task to \(appearance.title(for: status))")
             }.frame(minHeight: 36, alignment: .top)
             ScrollView {
                 LazyVStack(spacing: 10) {
@@ -968,7 +990,7 @@ private struct WorkspaceItemEditor<Content: View>: View {
                         .accessibilityLabel("Cancel")
                     Spacer()
                     Button(isNew ? "Create" : "Save", action: save)
-                        .appGlassButton(accent: true)
+                        .appGlassButton(size: .small, shape: .rectangle, accent: true)
                         .keyboardShortcut(.defaultAction)
                         .disabled(!canSave)
                 }
