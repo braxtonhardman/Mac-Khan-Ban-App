@@ -67,70 +67,78 @@ struct ProfileSettingsView: View {
     @State private var loaded = false
     @State private var error: String?
     @State private var showingSync = false
+    @State private var selectedIntegration: AccountIntegration?
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Label("Profile & Settings", systemImage: "person.crop.circle").font(AppTypography.pageTitle)
-                Spacer()
-            }.padding(20)
-            Form {
-                AppSection("Appearance") {
-                    Picker("Theme", selection: $draft.mode) {
-                        ForEach(AppearanceMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }.pickerStyle(.segmented)
-                    Text("System follows your device. Light or Dark overrides it for this app.")
-                        .font(AppTypography.caption).foregroundStyle(.secondary)
-                }
-                AppSection("Board stages") {
-                    ForEach(Array(TaskStatus.allCases.enumerated()), id: \.element.id) { index, status in
-                        TextField(status.title, text: $draft.stageNames[index])
+        NavigationStack {
+            VStack(spacing: 0) {
+                settingsHeader
+                Form {
+                    Section { profileHeader }
+                    Section {
+                        Button { showingSync = true } label: { syncSummaryCard }
+                            .buttonStyle(.plain)
                     }
-                    Text("These names apply to every project. The fifth stage always counts as completed work.")
-                        .font(AppTypography.caption).foregroundStyle(.secondary)
-                    if let validation = draft.validationError { Text(validation).foregroundStyle(.red) }
-                }
-                AppSection("Accent color") {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                        ForEach(AccentChoice.allCases) { choice in
-                            Button { draft.accent = choice } label: {
-                                VStack(spacing: 4) {
-                                    Circle().fill(choice.color).frame(width: 30, height: 30)
-                                        .overlay {
-                                            if draft.accent == choice {
-                                                Image(systemName: "checkmark").font(AppTypography.smallIcon).foregroundStyle(.black)
-                                            }
-                                        }
-                                    Text(choice.title).font(AppTypography.caption).foregroundStyle(.primary)
-                                }.frame(maxWidth: .infinity).padding(4)
-                            }.buttonStyle(.plain)
-                                .accessibilityLabel(choice.title)
-                                .accessibilityAddTraits(draft.accent == choice ? .isSelected : [])
+                    AppSection("Accounts") {
+                        ForEach(AccountIntegration.allCases) { integration in
+                            Button { selectedIntegration = integration } label: {
+                                SettingsRowLabel(
+                                    icon: integration.icon,
+                                    title: integration.title,
+                                    subtitle: "Not connected",
+                                    value: "Set up later"
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
+                    AppSection("General") {
+                        NavigationLink {
+                            AppearanceSettingsPage(draft: $draft)
+                        } label: {
+                            SettingsRowLabel(
+                                icon: "paintpalette",
+                                title: "Appearance",
+                                subtitle: "Theme and accent color",
+                                value: draft.mode.title
+                            )
+                        }
+                        NavigationLink {
+                            BoardStageSettingsPage(stageNames: $draft.stageNames)
+                        } label: {
+                            SettingsRowLabel(
+                                icon: "rectangle.3.group",
+                                title: "Board stages",
+                                subtitle: "Names used across every project",
+                                value: "\(draft.stageNames.count) stages"
+                            )
+                        }
+                        NavigationLink {
+                            TagLibrarySettingsPage(
+                                tagNames: $tagNames,
+                                available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags)
+                            )
+                        } label: {
+                            SettingsRowLabel(
+                                icon: "tag",
+                                title: "Tags",
+                                subtitle: "Reusable task labels",
+                                value: "\(tagNames.count)"
+                            )
+                        }
+                    }
                 }
-                AppSection("Tags") {
-                    TagSelector(selection: $tagNames, available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags), allowsRemoval: false)
-                    Text("Create reusable tags here or while editing a task. Tags already used on tasks are available automatically.")
-                        .font(AppTypography.caption).foregroundStyle(.secondary)
-                }
-                AppSection("iCloud") {
-                    Text("Your appearance, stage names, accent color, and tags sync between Mac and iPhone when both use an iCloud build. Area collapse stays specific to each device.")
-                        .font(AppTypography.caption).foregroundStyle(.secondary)
-                    Button("Storage & Sync…") { showingSync = true }
-                }
-            }.formStyle(.grouped)
-            if let error { Text(error).foregroundStyle(.red).padding(.horizontal) }
-            HStack {
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Save") { save() }.keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent).disabled(draft.validationError != nil)
-            }.padding(20)
+                .formStyle(.grouped)
+                if let error { Text(error).foregroundStyle(.red).padding(.horizontal) }
+                HStack {
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                    Spacer()
+                    Button("Save") { save() }.keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent).disabled(draft.validationError != nil)
+                }.padding(20)
+            }
         }
-        .modifier(EditorSizing(width: 520, height: 660))
+        .modifier(EditorSizing(width: 560, height: 720))
         .onAppear {
             guard !loaded else { return }
             draft = BoardAppearance(stageNames: TaskStatus.allCases.map { appearance.title(for: $0) }, accent: appearance.accent, mode: appearance.mode)
@@ -138,6 +146,70 @@ struct ProfileSettingsView: View {
             loaded = true
         }
         .sheet(isPresented: $showingSync) { SyncStatusView() }
+        .sheet(item: $selectedIntegration) { AccountIntegrationView(integration: $0) }
+    }
+
+    private var settingsHeader: some View {
+        ZStack {
+            Text("Settings").font(AppTypography.pageTitle)
+            HStack {
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(AppTypography.smallIcon)
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Close Settings")
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    private var profileHeader: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: 58))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Workspace Profile").font(AppTypography.sectionTitle)
+                Text(SyncStatus.isCloudBuild ? "Private iCloud profile" : "Local profile")
+                    .font(AppTypography.supporting)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "person.crop.circle.badge.checkmark")
+                .font(AppTypography.controlIcon)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+    }
+
+    private var syncSummaryCard: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Current storage").font(AppTypography.caption).foregroundStyle(.secondary)
+                Text(SyncStatus.isCloudBuild ? "iCloud Sync" : "On This Device")
+                    .font(AppTypography.sectionTitle)
+                    .foregroundStyle(.tint)
+                Text(SyncStatus.isCloudBuild ? "Projects and profile preferences sync between devices." : "Projects and preferences remain on this device.")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            Text("Manage")
+                .font(AppTypography.metadataEmphasis)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.quaternary, in: Capsule())
+        }
+        .contentShape(Rectangle())
+        .padding(.vertical, 8)
     }
     private func save() {
         guard draft.validationError == nil else { return }
@@ -151,5 +223,163 @@ struct ProfileSettingsView: View {
         profile.updatedAt = Date()
         do { try StoreWriter.save(context); dismiss() }
         catch { self.error = error.localizedDescription }
+    }
+}
+
+private struct SettingsRowLabel: View {
+    let icon: String
+    let title: String
+    var subtitle: String? = nil
+    var value: String? = nil
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(AppTypography.itemTitle)
+                .foregroundStyle(.tint)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(AppTypography.body).foregroundStyle(.primary)
+                if let subtitle {
+                    Text(subtitle).font(AppTypography.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 10)
+            if let value {
+                Text(value).font(AppTypography.caption).foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
+        .padding(.vertical, 7)
+    }
+}
+
+private enum AccountIntegration: String, CaseIterable, Identifiable {
+    case github
+    case openAI
+
+    var id: String { rawValue }
+    var title: String { self == .github ? "GitHub" : "OpenAI / ChatGPT" }
+    var icon: String { self == .github ? "chevron.left.forwardslash.chevron.right" : "sparkles" }
+    var summary: String {
+        switch self {
+        case .github:
+            return "A future GitHub connection will attach issues and pull requests to tasks."
+        case .openAI:
+            return "A future OpenAI connection will support task planning and project assistance."
+        }
+    }
+}
+
+private struct AccountIntegrationView: View {
+    @Environment(\.dismiss) private var dismiss
+    let integration: AccountIntegration
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Text(integration.title).font(AppTypography.pageTitle)
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            Image(systemName: integration.icon)
+                .font(.system(size: 46))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            Text("Not connected").font(AppTypography.sectionTitle)
+            Text(integration.summary)
+                .font(AppTypography.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Label("Connection setup is planned for a later integration release.", systemImage: "clock")
+                .font(AppTypography.supporting)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Connect \(integration.title)") {}
+                .buttonStyle(.borderedProminent)
+                .disabled(true)
+        }
+        .padding(24)
+        .modifier(EditorSizing(width: 430, height: 360))
+    }
+}
+
+private struct AppearanceSettingsPage: View {
+    @Binding var draft: BoardAppearance
+
+    var body: some View {
+        Form {
+            AppSection("Theme") {
+                Picker("Theme", selection: $draft.mode) {
+                    ForEach(AppearanceMode.allCases) { mode in Text(mode.title).tag(mode) }
+                }
+                .pickerStyle(.segmented)
+                Text("System follows your device. Light or Dark overrides it for this app.")
+                    .font(AppTypography.caption).foregroundStyle(.secondary)
+            }
+            AppSection("Accent color") {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
+                    ForEach(AccentChoice.allCases) { choice in
+                        Button { draft.accent = choice } label: {
+                            VStack(spacing: 5) {
+                                Circle().fill(choice.color).frame(width: 32, height: 32)
+                                    .overlay {
+                                        if draft.accent == choice {
+                                            Image(systemName: "checkmark")
+                                                .font(AppTypography.smallIcon)
+                                                .foregroundStyle(.black)
+                                        }
+                                    }
+                                Text(choice.title).font(AppTypography.caption).foregroundStyle(.primary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(4)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(choice.title)
+                        .accessibilityAddTraits(draft.accent == choice ? .isSelected : [])
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Appearance")
+    }
+}
+
+private struct BoardStageSettingsPage: View {
+    @Binding var stageNames: [String]
+
+    var body: some View {
+        Form {
+            AppSection("Board stages") {
+                ForEach(Array(TaskStatus.allCases.enumerated()), id: \.element.id) { index, status in
+                    TextField(status.title, text: $stageNames[index])
+                }
+                Text("These names apply to every project. The fifth stage always counts as completed work.")
+                    .font(AppTypography.caption).foregroundStyle(.secondary)
+                let draft = BoardAppearance(stageNames: stageNames)
+                if let validation = draft.validationError { Text(validation).foregroundStyle(.red) }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Board Stages")
+    }
+}
+
+private struct TagLibrarySettingsPage: View {
+    @Binding var tagNames: [String]
+    let available: [String]
+
+    var body: some View {
+        Form {
+            AppSection("Tags") {
+                TagSelector(selection: $tagNames, available: available, allowsRemoval: false)
+                Text("Create reusable tags here or while editing a task. Tags already used on tasks are available automatically.")
+                    .font(AppTypography.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Tags")
     }
 }

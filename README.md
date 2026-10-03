@@ -54,6 +54,7 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 
 The top-right profile button opens shared board preferences:
 
+- The settings landing page groups profile and storage status, future account integrations, and general preferences. GitHub and OpenAI/ChatGPT appear as clearly marked, inactive connection placeholders until authentication is implemented.
 - Rename all five stages. Names apply across projects and task status menus; the fifth stage still counts as completed work.
 - Choose red, orange, yellow, green, teal, blue, purple, or pink as the app accent.
 - Choose System, Light, or Dark appearance. Light and Dark override the device setting; System follows each device. The choice syncs with your profile.
@@ -80,7 +81,7 @@ CloudKit requires an active Apple Developer Program membership. Both targets use
 2. Verify that the same CloudKit container is available for both app targets. Cloud configurations include iCloud and push entitlements; iPhone also needs Remote notifications background mode.
 3. Run the **iCloud** scheme on Mac and iPhone. Use the same iCloud account and the same CloudKit environment on both. Normal Debug schemes deliberately keep data local.
 4. Open **Profile & Settings → Storage & Sync** inside the top-right profile button to check account status, recent CloudKit activity, and reported errors.
-5. Create a project on one device, wait for sync, and verify it on the other. Edit a task and its status on the second device, then verify the change on the first. Repeat with an Area and a checklist.
+5. Create a project on one device, wait for sync, and verify it on the other. Edit a task and its status on the second device, then verify the change on the first. Repeat with an Area and a subtask.
 
 CloudKit sync is asynchronous and may be delayed by connectivity, system scheduling, or account conditions. Local edits remain stored while offline. The app does not claim that all devices are up to date merely because a local save succeeded. Simultaneous edits to the same field follow the underlying SwiftData/CloudKit merge behavior; a checklist is a single persisted value rather than independently merged items.
 
@@ -109,13 +110,14 @@ swift test
 
 Xcode compiles the core directly into both apps; Swift Package Manager builds it as a separate module. The optional package executable can use a different store because it is not bundled in the same sandbox. Use the Xcode app consistently for your real data.
 
-## Next: GitHub integration
+## Next: account integrations
 
 1. Add a `GitHubClient` protocol with a mock implementation; keep HTTP and authentication out of views and models.
 2. Associate repository/issue/PR link records with stable local task UUIDs, with a tested schema upgrade.
 3. Store opt-in credentials in Keychain. Start with read-only imports and status refresh while preserving offline use.
 4. Add explicit push actions, conflict review, retries, and rate-limit tests before two-way GitHub sync.
-5. Add JSON export/import, undo, manual card ordering, and broader UI automation.
+5. Define an `OpenAIClient` boundary and explicit user-controlled project context before enabling ChatGPT-assisted planning. Keep provider credentials in Keychain and out of SwiftData and CloudKit.
+6. Add JSON export/import, undo, manual card ordering, and broader UI automation.
 
 ## Validation notes
 
@@ -123,7 +125,7 @@ Xcode compiles the core directly into both apps; Swift Package Manager builds it
 - Mac UI smoke checks cover existing data after upgrade, Area creation/moving/collapse, and the simplified project-name sidebar.
 - iCloud needs signed builds and an available Apple account. A successful build and account check do not establish that data has reached a second device.
 - Real-device sync, Calendar event creation after permission, and distribution remain separate manual checks. Use your own Mac/iPhone with the same Apple account to complete the sync checklist above.
-- Signed Mac and iPhone simulator builds pass. The Mac profile/settings and simplified sidebar were checked in the running app. The Mac reports an available iCloud account and starts CloudKit activity. Simulator installation stalled during runtime validation, so no iPhone runtime or two-device sync pass is claimed.
+- Signed Mac and physical-iPhone builds pass. The redesigned profile/settings flow was checked in the running Mac app, and the current iPhone build was installed and launched on the connected device.
 
 ## Typography
 
