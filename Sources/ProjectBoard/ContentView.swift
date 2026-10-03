@@ -44,57 +44,8 @@ struct ContentView: View {
     }
     var body: some View {
         NavigationSplitView(columnVisibility: navigationColumnVisibility) {
-            Group {
-            #if os(macOS)
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(areas) { area in areaGroup(area) }
-                    if hasUnassignedProjects { areaGroup(nil) }
-                }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 12)
-            }
-            #else
-            List(selection: $selection) {
-                ForEach(areas) { area in areaGroup(area) }
-                if hasUnassignedProjects { areaGroup(nil) }
-            }
-            #endif
-            }
-            .contextMenu {
-                Button("New Area…") { areaEditor = .init(area: nil) }
-                Button("New Project…") { projectEditor = .init(project: nil) }.keyboardShortcut("n", modifiers: [.command, .shift])
-            }
-            #if os(iOS)
-            .navigationTitle("Workspace")
-            .listStyle(.insetGrouped)
-            .listSectionSpacing(14)
-            .contentMargins(.top, 24, for: .scrollContent)
-            #endif
-            #if os(macOS)
-            .toolbar(removing: .sidebarToggle)
-            .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
-            .toolbarBackground(.visible, for: .windowToolbar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack(spacing: 12) {
-                    Text("Workspace").font(AppTypography.pageTitle).lineLimit(1)
-                    Spacer()
-                    creationMenu
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, isFullScreen ? 20 : 10)
-                .padding(.bottom, 16)
-            }
-            #else
-            .toolbar {
-                profileToolbarItem
-            }
-            .contentMargins(.bottom, 88, for: .scrollContent)
-            .overlay(alignment: .bottomTrailing) {
-                creationMenu.padding(20)
-            }
-            #endif
-            .navigationSplitViewColumnWidth(min: 230, ideal: 230)
+            workspaceSidebar
+                .navigationSplitViewColumnWidth(min: 230, ideal: 230)
 
         } detail: {
             Group {
@@ -114,10 +65,6 @@ struct ContentView: View {
             }
             #if os(macOS)
             .padding(.top, isFullScreen ? 32 : 0)
-            #else
-            .toolbar {
-                profileToolbarItem
-            }
             #endif
         }
         #if os(macOS)
@@ -176,6 +123,35 @@ struct ContentView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
+
+    @ViewBuilder
+    private var workspaceSidebar: some View {
+        #if os(macOS)
+        MacWorkspaceSidebar(
+            isFullScreen: isFullScreen,
+            newArea: { areaEditor = .init(area: nil) },
+            newProject: { projectEditor = .init(project: nil) },
+            content: { workspaceGroups },
+            creationControl: { creationMenu }
+        )
+        #else
+        IOSWorkspaceSidebar(
+            selection: $selection,
+            newArea: { areaEditor = .init(area: nil) },
+            newProject: { projectEditor = .init(project: nil) },
+            content: { workspaceGroups },
+            creationControl: { creationMenu },
+            profileControl: { profileButton }
+        )
+        #endif
+    }
+
+    @ViewBuilder
+    private var workspaceGroups: some View {
+        ForEach(areas) { area in areaGroup(area) }
+        if hasUnassignedProjects { areaGroup(nil) }
+    }
+
     private var profileButton: some View {
         Button { showingProfile = true } label: {
             Label("Profile & Settings", systemImage: "person.crop.circle")
@@ -186,18 +162,6 @@ struct ContentView: View {
         .help("Profile & Settings")
         .accessibilityLabel("Profile & Settings")
     }
-
-    #if os(iOS)
-    @ToolbarContentBuilder
-    private var profileToolbarItem: some ToolbarContent {
-        if #available(iOS 26.0, *) {
-            ToolbarItem(placement: .topBarTrailing) { profileButton }
-                .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .topBarTrailing) { profileButton }
-        }
-    }
-    #endif
 
     private var creationMenu: some View {
         Menu {
@@ -585,7 +549,6 @@ struct ProjectBoardView: View {
         return false
         #endif
     }
-    @State private var mobileStatus: TaskStatus = .backlog
     @Bindable var project: Project
     let editProject: () -> Void
     let deleteProject: () -> Void
@@ -596,36 +559,12 @@ struct ProjectBoardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                #if os(macOS)
-                HStack(alignment: .top, spacing: 16) {
-                    Text(project.name)
-                        .font(AppTypography.boardTitle)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                    Spacer()
-                    projectOptions
-                }
-                .buttonStyle(.borderless)
-                .padding(.trailing, 46) // Reserve the fixed Profile control at the window edge.
-                #endif
-                if !project.notes.isEmpty { Text(project.notes).foregroundStyle(.secondary).lineLimit(2) }
-                HStack {
-                    ProgressView(value: project.progress).frame(width: compactLayout ? 65 : 160)
-                    Text(project.progress, format: .percent.precision(.fractionLength(0))).font(AppTypography.itemTitle)
-                    Text("· \(project.topLevelTasks.filter { $0.status == .done }.count) of \(project.topLevelTasks.count) tasks complete")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-            }.padding(20)
-            if compactLayout {
-                Picker("Column", selection: $mobileStatus) {
-                    ForEach(TaskStatus.allCases) { Text(appearance.title(for: $0)).tag($0) }
-                }.pickerStyle(.menu).padding(.horizontal, 20)
-            }
+            projectHeader
+            #if os(macOS)
             Divider()
+            #endif
             GeometryReader { geometry in
-                let statuses = compactLayout ? [mobileStatus] : TaskStatus.allCases
+                let statuses = TaskStatus.allCases
                 let spacing: CGFloat = 14
                 let horizontalPadding: CGFloat = 20
                 let availableWidth = max(0, geometry.size.width - horizontalPadding * 2)
@@ -633,28 +572,28 @@ struct ProjectBoardView: View {
                 let columnWidth = compactLayout
                     ? availableWidth
                     : max(180, (availableWidth - gaps) / CGFloat(statuses.count))
-                let columnHeight = max(0, geometry.size.height - 40)
+                let columnHeight = max(0, geometry.size.height)
 
                 ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: spacing) {
-                        ForEach(statuses) { status in
-                            column(status, width: columnWidth, height: columnHeight)
-                        }
-                    }
-                    .padding(horizontalPadding)
+                    boardColumns(
+                        statuses: statuses,
+                        spacing: spacing,
+                        columnWidth: columnWidth,
+                        columnHeight: columnHeight,
+                        horizontalPadding: horizontalPadding
+                    )
+                    .scrollTargetLayout()
                 }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
             }
         }
         #if os(macOS)
         .background(Color(nsColor: .windowBackgroundColor))
         #endif
         #if os(iOS)
-        .navigationTitle(project.name)
-        #endif
-        #if os(iOS)
-        .toolbar {
-            projectOptionsToolbarItem
-        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         #endif
         .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
         .sheet(item: $editor) {
@@ -670,6 +609,49 @@ struct ProjectBoardView: View {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
     }
+
+    @ViewBuilder
+    private var projectHeader: some View {
+        #if os(macOS)
+        MacProjectHeader(
+            name: project.name,
+            notes: project.notes,
+            progress: project.progress,
+            completedCount: completedTaskCount,
+            taskCount: project.topLevelTasks.count,
+            actions: { projectOptions }
+        )
+        #else
+        IOSProjectHeader(
+            name: project.name,
+            notes: project.notes,
+            progress: project.progress,
+            completedCount: completedTaskCount,
+            taskCount: project.topLevelTasks.count,
+            actions: { projectOptions }
+        )
+        #endif
+    }
+
+    private var completedTaskCount: Int {
+        project.topLevelTasks.filter { $0.status == .done }.count
+    }
+
+    private func boardColumns(
+        statuses: [TaskStatus],
+        spacing: CGFloat,
+        columnWidth: CGFloat,
+        columnHeight: CGFloat,
+        horizontalPadding: CGFloat
+    ) -> some View {
+        HStack(alignment: .top, spacing: spacing) {
+            ForEach(statuses) { status in
+                column(status, width: columnWidth, height: columnHeight)
+            }
+        }
+        .padding(.horizontal, horizontalPadding)
+    }
+
     private var projectOptions: some View {
         Menu {
             Button("New Task") { editor = .init() }
@@ -677,26 +659,16 @@ struct ProjectBoardView: View {
             Divider()
             Button("Edit Project", action: editProject)
             Button("Delete Project…", role: .destructive, action: deleteProject)
-        } label: { Label("Project Options", systemImage: "ellipsis.circle") }
+        } label: { Label("Create Task or Manage Project", systemImage: "plus") }
             .labelStyle(.iconOnly)
             .appGlassButton(size: .large, shape: .circle)
+            .help("Create Task or Manage Project")
+            .accessibilityLabel("Create Task or Manage Project")
             #if os(macOS)
             .padding(.leading, 18)
             .padding(.bottom, 8)
             #endif
     }
-
-    #if os(iOS)
-    @ToolbarContentBuilder
-    private var projectOptionsToolbarItem: some ToolbarContent {
-        if #available(iOS 26.0, *) {
-            ToolbarItem(placement: .topBarLeading) { projectOptions }
-                .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .topBarLeading) { projectOptions }
-        }
-    }
-    #endif
 
     private func column(_ status: TaskStatus, width: CGFloat, height: CGFloat) -> some View {
         let tasks = project.topLevelTasks.filter { $0.status == status }.sorted { $0.createdAt < $1.createdAt }
@@ -708,10 +680,6 @@ struct ProjectBoardView: View {
                     .help(appearance.title(for: status))
                 Text("\(tasks.count)").foregroundStyle(.secondary)
                 Spacer()
-                Button { editor = .init(status: status) } label: { Image(systemName: "plus") }
-                    .appGlassButton(size: .small, shape: .circle)
-                    .help("Add task to \(appearance.title(for: status))")
-                    .accessibilityLabel("Add task to \(appearance.title(for: status))")
             }.frame(minHeight: 36, alignment: .top)
             ScrollView {
                 LazyVStack(spacing: 10) {
@@ -735,12 +703,15 @@ struct ProjectBoardView: View {
                         Text("Drop a task here").font(AppTypography.caption).foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity).padding(.vertical, 28)
                     }
-                }.padding(2)
+                }
+                .padding(.horizontal, 2)
+                .padding(.bottom, 24)
             }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .padding(12)
         .frame(width: width, height: height)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { values, _ in
             let ids = Set(values.compactMap(UUID.init(uuidString:)))
@@ -954,60 +925,30 @@ private struct WorkspaceItemEditor<Content: View>: View {
     }
 
     var body: some View {
+        Group {
         #if os(iOS)
-        NavigationStack {
-            ScrollView {
-                editorFields
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 32)
-            }
-            .font(AppTypography.body)
-            .background(Color(uiColor: .systemGroupedBackground))
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                EditorToolbarActions(
-                    confirmationTitle: isNew ? "Create" : "Save",
-                    canConfirm: canSave,
-                    cancel: { dismiss() },
-                    confirm: save
-                )
-            }
-            .task {
-                if isNew { nameIsFocused = true }
-            }
-        }
+        IOSWorkspaceItemEditorShell(
+            title: title,
+            confirmationTitle: isNew ? "Create" : "Save",
+            canConfirm: canSave,
+            cancel: { dismiss() },
+            confirm: save,
+            fields: { editorFields }
+        )
         #else
-        VStack(spacing: 0) {
-            ZStack {
-                Text(title).font(AppTypography.pageTitle)
-                HStack {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }
-                        .appGlassButton(shape: .circle)
-                        .keyboardShortcut(.cancelAction)
-                        .accessibilityLabel("Cancel")
-                    Spacer()
-                    Button(isNew ? "Create" : "Save", action: save)
-                        .appGlassButton(size: .small, shape: .rectangle, accent: true)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(!canSave)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            Divider()
-            ScrollView {
-                editorFields
-                    .padding(24)
-            }
+        MacWorkspaceItemEditorShell(
+            title: title,
+            confirmationTitle: isNew ? "Create" : "Save",
+            canConfirm: canSave,
+            height: kind == "Area" ? 440 : 650,
+            cancel: { dismiss() },
+            confirm: save,
+            fields: { editorFields }
+        )
+        #endif
         }
-        .background(.background)
-        .modifier(EditorSizing(width: 540, height: kind == "Area" ? 440 : 650))
         .task {
             if isNew { nameIsFocused = true }
         }
-        #endif
     }
 }
