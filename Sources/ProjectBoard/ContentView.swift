@@ -91,11 +91,25 @@ struct ContentView: View {
             selection = task.project?.id
             linkedTask = task
         }
+        #if os(iOS)
         .sheet(item: $linkedTask) { task in
             if let project = task.project {
-                TaskEditor(project: project, task: task, initialStatus: task.status, parentTask: task.parentTask)
+                TaskDetailView(project: project, task: task, onClose: nil)
             }
         }
+        #else
+        .overlay {
+            if let linkedTask, let project = linkedTask.project {
+                MacInWindowModal {
+                    TaskDetailView(
+                        project: project,
+                        task: linkedTask,
+                        onClose: { self.linkedTask = nil }
+                    )
+                }
+            }
+        }
+        #endif
         .sheet(isPresented: $showingProfile) { ProfileSettingsView() }
         .sheet(item: $areaEditor) { AreaEditor(area: $0.area) }
         .confirmationDialog("Delete \(removingArea?.name ?? "area")?", isPresented: Binding(get: { removingArea != nil }, set: { if !$0 { removingArea = nil } })) {
@@ -155,7 +169,6 @@ struct ContentView: View {
     private var profileButton: some View {
         Button { showingProfile = true } label: {
             Label("Profile & Settings", systemImage: "person.crop.circle")
-                .font(AppTypography.controlIcon)
         }
         .labelStyle(.iconOnly)
         .appGlassButton(size: .large, shape: .circle)
@@ -170,10 +183,13 @@ struct ContentView: View {
             Button("New Area…") { areaEditor = .init(area: nil) }
         } label: {
             Label("Create Project or Area", systemImage: "plus.rectangle.on.folder")
-                .font(AppTypography.controlIcon)
         }
         .labelStyle(.iconOnly)
+        #if os(iOS)
         .appGlassButton(size: .extraLarge, shape: .circle)
+        #else
+        .appGlassButton(size: .medium, shape: .circle)
+        #endif
         .help("Create Project or Area")
     }
 
@@ -553,6 +569,7 @@ struct ProjectBoardView: View {
     let editProject: () -> Void
     let deleteProject: () -> Void
     @State private var editor: TaskEditRequest?
+    @State private var viewingTask: BoardTask?
     @State private var calendarTask: BoardTask?
     @State private var deleting: BoardTask?
     @State private var error: String?
@@ -566,7 +583,11 @@ struct ProjectBoardView: View {
             GeometryReader { geometry in
                 let statuses = TaskStatus.allCases
                 let spacing: CGFloat = 14
+                #if os(iOS)
+                let horizontalPadding: CGFloat = 16
+                #else
                 let horizontalPadding: CGFloat = 20
+                #endif
                 let availableWidth = max(0, geometry.size.width - horizontalPadding * 2)
                 let gaps = spacing * CGFloat(statuses.count - 1)
                 let columnWidth = compactLayout
@@ -596,9 +617,34 @@ struct ProjectBoardView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
+        #if os(iOS)
         .sheet(item: $editor) {
             TaskEditor(project: project, task: $0.task, initialStatus: $0.status, parentTask: $0.parentTask)
         }
+        .sheet(item: $viewingTask) { TaskDetailView(project: project, task: $0, onClose: nil) }
+        #else
+        .overlay {
+            if let viewingTask {
+                MacInWindowModal {
+                    TaskDetailView(
+                        project: project,
+                        task: viewingTask,
+                        onClose: { self.viewingTask = nil }
+                    )
+                }
+            } else if let editor {
+                MacInWindowModal {
+                    TaskEditor(
+                        project: project,
+                        task: editor.task,
+                        initialStatus: editor.status,
+                        parentTask: editor.parentTask,
+                        onClose: { self.editor = nil }
+                    )
+                }
+            }
+        }
+        #endif
         .confirmationDialog("Delete task?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete Task", role: .destructive) {
                 if let deleting { context.delete(deleting); save() }
@@ -661,13 +707,13 @@ struct ProjectBoardView: View {
             Button("Delete Project…", role: .destructive, action: deleteProject)
         } label: { Label("Create Task or Manage Project", systemImage: "plus") }
             .labelStyle(.iconOnly)
+            #if os(iOS)
+            .font(AppGlassButtonSize.medium.iconFont)
+            #else
             .appGlassButton(size: .large, shape: .circle)
+            #endif
             .help("Create Task or Manage Project")
             .accessibilityLabel("Create Task or Manage Project")
-            #if os(macOS)
-            .padding(.leading, 18)
-            .padding(.bottom, 8)
-            #endif
     }
 
     private func column(_ status: TaskStatus, width: CGFloat, height: CGFloat) -> some View {
@@ -684,7 +730,7 @@ struct ProjectBoardView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     ForEach(tasks) { task in
-                        Button { editor = .init(task: task) } label: { TaskCard(task: task) }
+                        Button { viewingTask = task } label: { TaskCard(task: task) }
                             .buttonStyle(.plain)
                             .draggable(task.id.uuidString)
                             .contextMenu {
@@ -704,13 +750,19 @@ struct ProjectBoardView: View {
                             .frame(maxWidth: .infinity).padding(.vertical, 28)
                     }
                 }
+                #if os(macOS)
                 .padding(.horizontal, 2)
+                #endif
                 .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
         }
+        #if os(iOS)
+        .padding(.vertical, 12)
+        #else
         .padding(12)
+        #endif
         .frame(width: width, height: height)
         .contentShape(Rectangle())
         .dropDestination(for: String.self) { values, _ in
@@ -738,22 +790,28 @@ struct TaskCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(task.title).font(AppTypography.itemTitle).fixedSize(horizontal: false, vertical: true)
             if !task.details.isEmpty { Text(task.details).font(AppTypography.supporting).foregroundStyle(.secondary).lineLimit(2) }
-            HStack {
-                Text(task.priority.title).font(AppTypography.metadataEmphasis)
-                    .foregroundStyle(task.priority.rawValue >= 2 ? Color.orange : Color.secondary)
-                Spacer()
-                if let date = task.dueDate {
-                    Label(date.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
-                        .font(AppTypography.caption)
-                        .foregroundStyle(date < Calendar.current.startOfDay(for: Date()) && task.status != .done ? Color.red : Color.secondary)
-                }
-            }
-            if !task.tags.isEmpty {
-                Text(task.tags.map { "#\($0)" }.joined(separator: "  ")).font(AppTypography.caption).foregroundStyle(.tint).lineLimit(2)
-            }
+            Text(task.priority.title).font(AppTypography.metadataEmphasis)
+                .foregroundStyle(task.priority.rawValue >= 2 ? Color.orange : Color.secondary)
             if !task.subtaskList.isEmpty {
                 Label("\(task.subtaskList.filter { $0.status == .done }.count)/\(task.subtaskList.count) subtasks", systemImage: "list.bullet.indent")
                     .font(AppTypography.caption).foregroundStyle(.secondary)
+            }
+            if !task.tags.isEmpty || task.dueDate != nil {
+                HStack(alignment: .bottom, spacing: 8) {
+                    if !task.tags.isEmpty {
+                        Text(task.tags.map { "#\($0)" }.joined(separator: "  "))
+                            .font(AppTypography.caption)
+                            .foregroundStyle(.tint)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    if let date = task.dueDate {
+                        Label(date.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(date < Calendar.current.startOfDay(for: Date()) && task.status != .done ? Color.red : Color.secondary)
+                            .fixedSize()
+                    }
+                }
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)

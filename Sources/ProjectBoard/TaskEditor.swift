@@ -11,6 +11,8 @@ struct TaskEditor: View {
     let project: Project
     let task: BoardTask?
     let parentTask: BoardTask?
+    let onDelete: () -> Void
+    let onClose: (() -> Void)?
     @State private var title: String
     @State private var details: String
     @State private var status: TaskStatus
@@ -26,10 +28,19 @@ struct TaskEditor: View {
     @State private var error: String?
     @State private var confirmingDeletion = false
 
-    init(project: Project, task: BoardTask?, initialStatus: TaskStatus, parentTask: BoardTask? = nil) {
+    init(
+        project: Project,
+        task: BoardTask?,
+        initialStatus: TaskStatus,
+        parentTask: BoardTask? = nil,
+        onDelete: @escaping () -> Void = {},
+        onClose: (() -> Void)? = nil
+    ) {
         self.project = project
         self.task = task
         self.parentTask = task?.parentTask ?? parentTask
+        self.onDelete = onDelete
+        self.onClose = onClose
         _title = State(initialValue: task?.title ?? "")
         _details = State(initialValue: task?.details ?? "")
         _status = State(initialValue: task?.status ?? initialStatus)
@@ -41,20 +52,7 @@ struct TaskEditor: View {
     var body: some View {
         Group {
             #if os(iOS)
-            NavigationStack {
-                editorLayout
-                    .navigationTitle(editorTitle)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        EditorToolbarActions(
-                            confirmationTitle: task == nil ? "Create" : "Save",
-                            canConfirm: !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                            cancel: { dismiss() },
-                            confirm: save
-                        )
-                    }
-            }
-            .presentationDetents([.large])
+            editorLayout.presentationDetents([.large])
             #else
             editorLayout
             #endif
@@ -66,6 +64,7 @@ struct TaskEditor: View {
         } message: {
             Text("This permanently deletes the task and any subtasks beneath it. This cannot be undone.")
         }
+        #if os(iOS)
         .sheet(item: $subtaskEditor) { request in
             TaskEditor(
                 project: project,
@@ -74,17 +73,31 @@ struct TaskEditor: View {
                 parentTask: request.parentTask
             )
         }
+        #else
+        .overlay {
+            if let request = subtaskEditor {
+                MacInWindowModal {
+                    TaskEditor(
+                        project: project,
+                        task: request.task,
+                        initialStatus: request.status,
+                        parentTask: request.parentTask,
+                        onClose: { subtaskEditor = nil }
+                    )
+                }
+            }
+        }
+        #endif
     }
 
     private var editorLayout: some View {
         VStack(spacing: 0) {
-            #if os(macOS)
             VStack(spacing: 12) {
                 ZStack {
                     Text(editorTitle).font(AppTypography.pageTitle)
                     HStack {
-                        Button { dismiss() } label: { Image(systemName: "xmark") }
-                            .appGlassButton(shape: .circle)
+                        Button(action: close) { Image(systemName: "xmark") }
+                            .appGlassButton(size: .large, shape: .circle)
                             .keyboardShortcut(.cancelAction)
                             .accessibilityLabel("Cancel")
                         Spacer()
@@ -103,11 +116,12 @@ struct TaskEditor: View {
                     Spacer()
                     Text(project.name).font(AppTypography.contextTitle).foregroundStyle(.secondary).lineLimit(1)
                     if task != nil {
-                        Button("Delete Task", systemImage: "trash", role: .destructive) {
+                        Button {
                             confirmingDeletion = true
+                        } label: {
+                            Image(systemName: "trash")
                         }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderless)
+                        .appGlassButton(size: .small, shape: .circle)
                         .help("Delete Task")
                         .accessibilityLabel("Delete Task")
                     }
@@ -115,20 +129,8 @@ struct TaskEditor: View {
             }
             .padding(20)
             Divider()
-            #endif
             Form {
-                #if os(iOS)
-                Section {
-                    Label(project.name, systemImage: "rectangle.3.group")
-                        .font(AppTypography.contextTitle)
-                    if let parentTask {
-                        Label("Subtask of “\(parentDisplayTitle(parentTask))”", systemImage: "arrow.turn.up.left")
-                            .font(AppTypography.supporting)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                #endif
-                AppSection("Task") {
+                AppSection("Task", headingColor: .white) {
                     TextField("Title", text: $title)
                     Picker("Status", selection: $status) {
                         ForEach(TaskStatus.allCases) { Text(appearance.title(for: $0)).tag($0) }
@@ -137,32 +139,23 @@ struct TaskEditor: View {
                         ForEach(TaskPriority.allCases) { Text($0.title).tag($0) }
                     }
                 }
-                AppSection("Description") {
+                AppSection("Description", headingColor: .white) {
                     TextEditor(text: $details)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 85)
                         .accessibilityLabel("Task description")
                 }
-                AppSection("Details") {
+                AppSection("Details", headingColor: .white) {
                     dueDateField
                     if dueDate != nil {
                         Text("After saving, right-click or long-press the card and choose Add or Update Deadline in Calendar.")
                             .font(AppTypography.caption).foregroundStyle(.secondary)
                     }
                 }
-                AppSection("Tags") {
+                AppSection("Tags", headingColor: .white) {
                     TagSelector(selection: $tags, available: profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
                 }
                 subtasksSection
-                #if os(iOS)
-                if task != nil {
-                    Section {
-                        Button("Delete Task", systemImage: "trash", role: .destructive) {
-                            confirmingDeletion = true
-                        }
-                    }
-                }
-                #endif
             }.formStyle(.grouped)
             if let error { Text(error).foregroundStyle(.red).padding(.horizontal) }
         }
@@ -179,7 +172,7 @@ struct TaskEditor: View {
             let owner = task ?? draftTask
             let subtasks = (owner?.subtaskList ?? []).sorted { $0.createdAt < $1.createdAt }
             let completed = subtasks.filter { $0.status == .done }.count
-            AppSection("Subtasks \(completed)/\(subtasks.count)") {
+            AppSection("Subtasks \(completed)/\(subtasks.count)", headingColor: .white) {
                 ForEach(subtasks) { subtask in
                     HStack(spacing: 10) {
                         Button {
@@ -252,7 +245,7 @@ struct TaskEditor: View {
                     Image(systemName: "calendar")
                 }
             }
-            .buttonStyle(.borderless)
+            .appGlassButton(size: .small, shape: .rectangle)
             .accessibilityLabel("Due date")
             .accessibilityValue(dueDate?.formatted(date: .abbreviated, time: .omitted) ?? "No due date")
             .popover(isPresented: $showingDatePicker) {
@@ -274,8 +267,7 @@ struct TaskEditor: View {
                 Button { dueDate = nil } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
+                .appGlassButton(size: .small, shape: .circle)
                 .accessibilityLabel("Clear due date")
             }
         }
@@ -291,11 +283,16 @@ struct TaskEditor: View {
         guard let task else { return }
         if task.modelContext == nil {
             task.parentTask = nil
-            dismiss()
+            onDelete()
+            close()
             return
         }
         context.delete(task)
-        do { try StoreWriter.save(context); dismiss() }
+        do {
+            try StoreWriter.save(context)
+            onDelete()
+            close()
+        }
         catch { self.error = error.localizedDescription }
     }
 
@@ -311,7 +308,7 @@ struct TaskEditor: View {
             if !(parentTask.subtasks ?? []).contains(where: { $0 === item }) {
                 parentTask.subtasks = (parentTask.subtasks ?? []) + [item]
             }
-            dismiss()
+            close()
             return
         }
 
@@ -327,8 +324,12 @@ struct TaskEditor: View {
             profile.tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags) + tags)
         }
         item.updatedAt = Date()
-        do { try StoreWriter.save(context); dismiss() }
+        do { try StoreWriter.save(context); close() }
         catch { self.error = error.localizedDescription }
+    }
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
     }
 
     private func makeDraftParent() -> BoardTask {

@@ -18,12 +18,20 @@ struct IOSWorkspaceSidebar<Content: View, CreationControl: View, ProfileControl:
             Button("New Project…", action: newProject)
                 .keyboardShortcut("n", modifiers: [.command, .shift])
         }
-        .navigationTitle("Workspace")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .listStyle(.insetGrouped)
         .listSectionSpacing(14)
         .contentMargins(.top, 24, for: .scrollContent)
         .contentMargins(.bottom, 88, for: .scrollContent)
-        .toolbar { profileToolbarItem }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Text("Workspace")
+                    .font(AppTypography.boardTitle)
+                    .lineLimit(1)
+            }
+            profileToolbarItem
+        }
         .overlay(alignment: .bottomTrailing) {
             creationControl()
                 .padding(20)
@@ -51,14 +59,6 @@ struct IOSProjectHeader<Actions: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 16) {
-                Text(name)
-                    .font(AppTypography.boardTitle)
-                    .lineLimit(2)
-                    .textSelection(.enabled)
-                Spacer()
-                actions()
-            }
             if !notes.isEmpty {
                 Text(notes)
                     .foregroundStyle(.secondary)
@@ -66,17 +66,35 @@ struct IOSProjectHeader<Actions: View>: View {
             }
             progressRow
         }
-        .padding(20)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 20)
+        .toolbar { projectToolbar }
+    }
+
+    @ToolbarContentBuilder
+    private var projectToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Text(name)
+                .font(AppTypography.sectionTitle)
+                .lineLimit(1)
+        }
+
+        ToolbarItem(placement: .topBarTrailing) { actions() }
     }
 
     private var progressRow: some View {
-        HStack {
-            ProgressView(value: progress).frame(width: 65)
+        HStack(spacing: 8) {
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+                .frame(minWidth: 52, maxWidth: .infinity)
             Text(progress, format: .percent.precision(.fractionLength(0)))
                 .font(AppTypography.itemTitle)
+                .fixedSize(horizontal: true, vertical: false)
             Text("· \(completedCount) of \(taskCount) tasks complete")
                 .foregroundStyle(.secondary)
-            Spacer()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -116,6 +134,32 @@ struct IOSWorkspaceItemEditorShell<Fields: View>: View {
 #endif
 
 #if os(macOS)
+struct MacInWindowModal<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.34)
+                .ignoresSafeArea()
+
+            content()
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.75)
+                        .allowsHitTesting(false)
+                }
+                .shadow(color: .black.opacity(0.32), radius: 32, y: 14)
+                .padding(28)
+        }
+        .contentShape(Rectangle())
+        .accessibilityAddTraits(.isModal)
+        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+        .zIndex(100)
+    }
+}
+
 struct MacWorkspaceSidebar<Content: View, CreationControl: View>: View {
     let isFullScreen: Bool
     let newArea: () -> Void
@@ -142,7 +186,7 @@ struct MacWorkspaceSidebar<Content: View, CreationControl: View>: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 12) {
                 Text("Workspace")
-                    .font(AppTypography.pageTitle)
+                    .font(AppTypography.boardTitle)
                     .lineLimit(1)
                 Spacer()
                 creationControl()
@@ -151,6 +195,7 @@ struct MacWorkspaceSidebar<Content: View, CreationControl: View>: View {
             .padding(.top, isFullScreen ? 20 : 10)
             .padding(.bottom, 16)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
@@ -163,24 +208,26 @@ struct MacProjectHeader<Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 16) {
+        ZStack(alignment: .topTrailing) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(name)
                     .font(AppTypography.boardTitle)
                     .lineLimit(2)
                     .textSelection(.enabled)
-                Spacer()
-                actions()
-            }
-            .buttonStyle(.borderless)
-            .padding(.trailing, 68)
+                    .padding(.trailing, 136)
 
-            if !notes.isEmpty {
-                Text(notes)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                if !notes.isEmpty {
+                    Text(notes)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                progressRow
             }
-            progressRow
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            actions()
+                .buttonStyle(.borderless)
+                .padding(.trailing, 68)
         }
         .padding(20)
     }
