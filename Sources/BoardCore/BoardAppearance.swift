@@ -17,9 +17,13 @@ public struct BoardAppearance: Equatable {
     public var accent: AccentChoice
     public var mode: AppearanceMode
     public init(stageNames: [String] = TaskStatus.allCases.map(\.title), accent: AccentChoice = .blue, mode: AppearanceMode = .system) {
-        self.stageNames = stageNames
+        self.stageNames = Self.activeStageNames(stageNames)
         self.accent = accent
         self.mode = mode
+    }
+    /// Preserve custom names, especially Done at legacy index 4, when retiring Blocked.
+    public static func activeStageNames(_ names: [String]) -> [String] {
+        names.count == 5 ? Array(names.prefix(3)) + [names[4]] : names
     }
     public func title(for status: TaskStatus) -> String {
         let index = TaskStatus.allCases.firstIndex(of: status)!
@@ -28,7 +32,7 @@ public struct BoardAppearance: Equatable {
         return name.isEmpty ? status.title : name
     }
     public var validationError: String? {
-        guard stageNames.count == TaskStatus.allCases.count else { return "Name all five stages." }
+        guard stageNames.count == TaskStatus.allCases.count else { return "Name all four stages." }
         let names = stageNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard names.allSatisfy({ !$0.isEmpty }) else { return "Stage names cannot be blank." }
         guard Set(names.map { $0.lowercased() }).count == names.count else { return "Give each stage a different name." }

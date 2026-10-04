@@ -2,6 +2,25 @@ import XCTest
 @testable import BoardCore
 
 final class DeadlineEventTests: XCTestCase {
+    func testNewAndLegacyLinksIdentifyTheSameTask() {
+        let id = UUID()
+        XCTAssertEqual(TaskLink.url(for: id).absoluteString, "tierin://task/\(id.uuidString)")
+        XCTAssertEqual(TaskLink.taskID(from: TaskLink.url(for: id)), id)
+        XCTAssertEqual(TaskLink.taskID(from: URL(string: "projectboard://task/\(id.uuidString)")), id)
+        XCTAssertNotEqual(TaskLink.taskID(from: TaskLink.url(for: UUID())), id)
+    }
+
+    func testUnrelatedAndMalformedLinksAreRejected() {
+        let id = UUID().uuidString
+        for link in ["https://task/\(id)", "tierin://project/\(id)",
+                     "tierin://task/extra/\(id)", "tierin://task/not-a-uuid",
+                     "tierin://task/\(id)?other=true", "tierin://task/\(id)#other",
+                     "tierin://user@task/\(id)"] {
+            XCTAssertNil(TaskLink.taskID(from: URL(string: link)), link)
+        }
+        XCTAssertNil(TaskLink.taskID(from: nil))
+    }
+
     func testAllDayDeadlineUsesCalendarDayAcrossDST() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
@@ -13,6 +32,7 @@ final class DeadlineEventTests: XCTestCase {
         XCTAssertEqual(payload.end.timeIntervalSince(payload.start), 23 * 3600)
         XCTAssertEqual(payload.title, "Ship — App")
         XCTAssertEqual(payload.notes, "Notes")
+        XCTAssertEqual(payload.url.scheme, "tierin")
         XCTAssertEqual(payload.url.lastPathComponent, id.uuidString)
     }
 }

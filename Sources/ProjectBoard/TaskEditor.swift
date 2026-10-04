@@ -1,5 +1,10 @@
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 #if SWIFT_PACKAGE
 import BoardCore
 #endif
@@ -58,6 +63,7 @@ struct TaskEditor: View {
             #endif
         }
         .modifier(EditorSizing(width: 560, height: 690))
+        .modifier(TagCreationHost())
         .confirmationDialog("Delete “\(task?.title ?? "task")”?", isPresented: $confirmingDeletion, titleVisibility: .visible) {
             Button("Delete Task", role: .destructive, action: deleteTask)
             Button("Cancel", role: .cancel) {}
@@ -76,7 +82,7 @@ struct TaskEditor: View {
         #else
         .overlay {
             if let request = subtaskEditor {
-                MacInWindowModal {
+                MacInWindowModal(onDismiss: { subtaskEditor = nil }) {
                     TaskEditor(
                         project: project,
                         task: request.task,
@@ -96,15 +102,35 @@ struct TaskEditor: View {
                 ZStack {
                     Text(editorTitle).font(AppTypography.pageTitle)
                     HStack {
-                        Button(action: close) { Image(systemName: "xmark") }
-                            .appGlassButton(size: .large, shape: .circle)
-                            .keyboardShortcut(.cancelAction)
-                            .accessibilityLabel("Cancel")
+                        if parentTask == nil {
+                            AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Cancel", action: close)
+                                .keyboardShortcut(.cancelAction)
+                        } else {
+                            Button(action: close) { Image(systemName: "chevron.left") }
+                                .appGlassButton(size: .medium, shape: .circle)
+                                .keyboardShortcut(.cancelAction)
+                                .accessibilityLabel("Back to parent task")
+                        }
                         Spacer()
-                        Button(task == nil ? "Create" : "Save", action: save)
-                            .appGlassButton(size: .small, shape: .rectangle, accent: true)
-                            .keyboardShortcut(.defaultAction)
-                            .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if task == nil {
+                            AppGlassActionButton(
+                                symbol: .confirm,
+                                accessibilityLabel: parentTask == nil ? "Create Task" : "Create Subtask",
+                                accent: true,
+                                action: save
+                            )
+                                .keyboardShortcut(.defaultAction)
+                                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        } else {
+                            AppGlassActionButton(
+                                symbol: .confirm,
+                                accessibilityLabel: parentTask == nil ? "Save Task" : "Save Subtask",
+                                accent: true,
+                                action: save
+                            )
+                                .keyboardShortcut(.defaultAction)
+                                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
                     }
                 }
                 HStack(spacing: 12) {
@@ -140,15 +166,13 @@ struct TaskEditor: View {
                     }
                 }
                 AppSection("Description", headingColor: .white) {
-                    TextEditor(text: $details)
-                        .scrollContentBackground(.hidden)
+                    AdaptiveTaskDescriptionEditor(text: $details)
                         .frame(minHeight: 85)
-                        .accessibilityLabel("Task description")
                 }
                 AppSection("Details", headingColor: .white) {
                     dueDateField
                     if dueDate != nil {
-                        Text("After saving, right-click or long-press the card and choose Add or Update Deadline in Calendar.")
+                        Text("Connect Apple Calendar in Profile to automatically sync task deadlines to your chosen calendar.")
                             .font(AppTypography.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -253,19 +277,30 @@ struct TaskEditor: View {
                     DatePicker("Due date", selection: $proposedDate, displayedComponents: .date)
                         .datePickerStyle(.graphical)
                     HStack {
-                        Button("Cancel") { showingDatePicker = false }
-                            .appGlassButton()
+                        AppGlassActionButton(
+                            symbol: .cancel,
+                            accessibilityLabel: "Cancel",
+                            action: { showingDatePicker = false }
+                        )
                         Spacer()
-                        Button("Set Date") {
-                            dueDate = proposedDate
-                            showingDatePicker = false
-                        }.appGlassButton(accent: true)
+                        AppGlassActionButton(
+                            symbol: .confirm,
+                            accessibilityLabel: "Set Date",
+                            accent: true,
+                            action: {
+                                dueDate = proposedDate
+                                showingDatePicker = false
+                            }
+                        )
                     }
                 }.padding().frame(width: 320)
+                #if os(iOS)
+                .modifier(DismissSheetOnOutsideTap())
+                #endif
             }
             if dueDate != nil {
                 Button { dueDate = nil } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    AppActionGlyph(symbol: .cancel, size: .small)
                 }
                 .appGlassButton(size: .small, shape: .circle)
                 .accessibilityLabel("Clear due date")
@@ -355,11 +390,108 @@ struct TaskEditor: View {
     }
 }
 
+/// Keeps the task description visually still while its text fits, then enables an overlay scrollbar.
+#if os(macOS)
+private struct AdaptiveTaskDescriptionEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+
+        let textView = NSTextView()
+        textView.delegate = context.coordinator
+        textView.string = text
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.font = NSFont.preferredFont(forTextStyle: .body)
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .controlAccentColor
+        textView.textContainerInset = NSSize(width: 5, height: 8)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.setAccessibilityLabel("Task description")
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
+        textView.string = text
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding private var text: String
+
+        init(text: Binding<String>) { _text = text }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text = textView.string
+        }
+    }
+}
+#else
+private struct AdaptiveTaskDescriptionEditor: UIViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.text = text
+        textView.backgroundColor = .clear
+        textView.font = UIFont.preferredFont(forTextStyle: .body)
+        textView.textColor = .label
+        textView.tintColor = .tintColor
+        textView.adjustsFontForContentSizeCategory = true
+        textView.alwaysBounceVertical = false
+        textView.showsVerticalScrollIndicator = true
+        textView.showsHorizontalScrollIndicator = false
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 5, bottom: 8, right: 5)
+        textView.textContainer.lineFragmentPadding = 0
+        textView.accessibilityLabel = "Task description"
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        guard textView.text != text else { return }
+        textView.text = text
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        @Binding private var text: String
+
+        init(text: Binding<String>) { _text = text }
+
+        func textViewDidChange(_ textView: UITextView) {
+            text = textView.text
+        }
+    }
+}
+#endif
+
 /// Search and create controls shared by task editing and the profile tag library.
 struct TagSelector: View {
     @Binding var selection: [String]
+    @Environment(\.createTag) private var createTag
+    @Query private var tagProfiles: [AppProfile]
+    @Environment(\.boardAppearance) private var tagAppearance
     let available: [String]
     var allowsRemoval = true
+    var tagsBelowSearch = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = ""
     @State private var showingSuggestions = false
@@ -368,31 +500,11 @@ struct TagSelector: View {
     private var library: [String] { TagRules.normalized(available + selection) }
     private var search: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var matches: [String] { TagRules.matches(library, query: query) }
-    private var canCreate: Bool { !search.isEmpty && TagRules.existing(search, in: library) == nil }
+    private var canCreate: Bool { TagRules.isValidNewName(search) && TagRules.existing(search, in: library) == nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !selection.isEmpty {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 8) {
-                    ForEach(TagRules.normalized(selection), id: \.self) { tag in
-                        HStack(spacing: 6) {
-                            Text("#" + tag).lineLimit(2)
-                            if allowsRemoval {
-                                Button {
-                                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
-                                        selection.removeAll { $0.caseInsensitiveCompare(tag) == .orderedSame }
-                                    }
-                                } label: { Image(systemName: "xmark").font(AppTypography.caption) }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Remove tag " + tag)
-                            }
-                        }
-                        .font(AppTypography.supporting)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                    }
-                }
-            }
+            if !tagsBelowSearch { selectedTags }
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search or create a tag", text: $query, prompt: Text("Search or create a tag…"))
@@ -415,9 +527,14 @@ struct TagSelector: View {
             .background(.background, in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
 
+            if tagsBelowSearch { selectedTags }
+
             if showingSuggestions {
                 VStack(alignment: .leading, spacing: 10) {
-                    if matches.isEmpty {
+                    if search.count > TagRules.maximumNameLength {
+                        Text("Tag names can have up to \(TagRules.maximumNameLength) characters.")
+                            .font(AppTypography.supporting).foregroundStyle(.secondary)
+                    } else if matches.isEmpty {
                         Text(search.isEmpty ? "No tags yet. Type a name to create one." : "No tags currently exist for “\(search)”. Create it below.")
                             .font(AppTypography.supporting).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -428,9 +545,10 @@ struct TagSelector: View {
                                     let selected = TagRules.existing(tag, in: selection) != nil
                                     Button { select(tag) } label: {
                                         HStack {
-                                            Text("#" + tag).foregroundStyle(.primary)
+                                            Circle().fill(tagColor(tag)).frame(width: 8, height: 8)
+                                            Text(tag).foregroundStyle(.primary).lineLimit(1)
                                             Spacer()
-                                            if selected { Image(systemName: "checkmark") }
+                                            if selected { AppActionGlyph(symbol: .confirm, size: .small) }
                                         }.padding(.vertical, 6).contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain).disabled(selected)
@@ -440,10 +558,15 @@ struct TagSelector: View {
                         }.frame(height: min(CGFloat(matches.count) * 34, 170))
                     }
                     if canCreate {
-                        Button { select(search) } label: {
-                            Label("Create “\(search)”", systemImage: "plus.circle")
-                                .lineLimit(2)
-                        }.buttonStyle(.borderless)
+                        AppGlassActionButton(
+                            symbol: .confirm,
+                            accessibilityLabel: "Create tag \(search)",
+                            accent: true,
+                            action: {
+                                searchFocused = false
+                                createTag(search) { select($0) }
+                            }
+                        )
                     }
                 }
                 .padding(12)
@@ -459,11 +582,296 @@ struct TagSelector: View {
             if searchFocused { showingSuggestions = true }
         }
     }
+    @ViewBuilder private var selectedTags: some View {
+        if !selection.isEmpty {
+            TagFlowLayout {
+                ForEach(TagRules.normalized(selection), id: \.self) { tag in
+                    HStack(spacing: 6) {
+                        EditableTagChip(name: tag, color: tagColor(tag)) {
+                            selection.removeAll { $0.caseInsensitiveCompare(tag) == .orderedSame }
+                        }
+                        if allowsRemoval {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                                    selection.removeAll { $0.caseInsensitiveCompare(tag) == .orderedSame }
+                                }
+                            } label: { AppActionGlyph(symbol: .cancel, size: .small) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove tag " + tag + " from this task")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    private func tagColor(_ name: String) -> Color {
+        (AppProfile.current(in: tagProfiles)?.color(forTag: name) ?? tagAppearance.accent).color
+    }
     private func select(_ name: String) {
         let canonical = TagRules.existing(name, in: library) ?? name
         selection = TagRules.normalized(selection + [canonical])
         query = ""
         searchFocused = false
         showingSuggestions = false
+    }
+}
+
+
+private struct CreateTagKey: EnvironmentKey {
+    static let defaultValue: (String, @escaping (String) -> Void) -> Void = { _, _ in }
+}
+private struct EditTagKey: EnvironmentKey {
+    static let defaultValue: (String, @escaping () -> Void) -> Void = { _, _ in }
+}
+private extension EnvironmentValues {
+    var editTag: (String, @escaping () -> Void) -> Void {
+        get { self[EditTagKey.self] }
+        set { self[EditTagKey.self] = newValue }
+    }
+    var createTag: (String, @escaping (String) -> Void) -> Void {
+        get { self[CreateTagKey.self] }
+        set { self[CreateTagKey.self] = newValue }
+    }
+}
+private struct TagCreationRequest: Identifiable {
+    let id = UUID()
+    let name: String
+    let onCreate: (String) -> Void
+    var isNew = true
+    var onDelete: (() -> Void)?
+}
+
+/// Install at the editor boundary so the Mac popup covers the editor, not the tag field.
+struct TagCreationHost: ViewModifier {
+    var backToParent = false
+    @State private var request: TagCreationRequest?
+    func body(content: Content) -> some View {
+        content
+            .environment(\.createTag, { name, onCreate in
+                request = TagCreationRequest(name: name, onCreate: onCreate)
+            })
+            .environment(\.editTag, { name, onDelete in
+                request = TagCreationRequest(name: name, onCreate: { _ in }, isNew: false, onDelete: onDelete)
+            })
+            #if os(iOS)
+            .sheet(item: $request) { item in
+                TagCreationView(name: item.name, isNew: item.isNew, backToParent: backToParent, onCreate: item.onCreate, onDelete: item.onDelete, onClose: { request = nil })
+                    .presentationDetents([.medium, .large])
+                    .modifier(DismissSheetOnOutsideTap())
+            }
+            #else
+            .overlay {
+                if let item = request {
+                    MacInWindowModal(onDismiss: { request = nil }) {
+                        TagCreationView(name: item.name, isNew: item.isNew, backToParent: backToParent, onCreate: item.onCreate, onDelete: item.onDelete, onClose: { request = nil })
+                            .frame(width: 410)
+                    }
+                }
+            }
+            #endif
+    }
+}
+
+private struct TagCreationView: View {
+    let name: String
+    let isNew: Bool
+    let backToParent: Bool
+    let onCreate: (String) -> Void
+    let onDelete: (() -> Void)?
+    let onClose: () -> Void
+    @Environment(\.modelContext) private var context
+    @Environment(\.boardAppearance) private var appearance
+    @Query private var profiles: [AppProfile]
+    @State private var color: AccentChoice?
+    @State private var error: String?
+    @State private var confirmingDeletion = false
+    private var selectedColor: AccentChoice {
+        color ?? AppProfile.current(in: profiles)?.color(forTag: name) ?? appearance.accent
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                Text(isNew ? "New Tag" : "Edit Tag").font(AppTypography.pageTitle)
+                HStack {
+                    AppGlassActionButton(symbol: backToParent ? .back : .cancel, accessibilityLabel: backToParent ? "Back to Tags" : "Cancel tag changes", action: onClose)
+                        .keyboardShortcut(.cancelAction)
+                    Spacer()
+                    AppGlassActionButton(symbol: .confirm, accessibilityLabel: isNew ? "Create tag" : "Save tag", action: save)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    AppSection("Tag") {
+                        TagChip(name: name, color: selectedColor.color)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    AppSection("Color") {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 60))], spacing: 12) {
+                            ForEach(AccentChoice.allCases) { choice in
+                                Button { color = choice } label: {
+                                    ZStack {
+                                        Circle().fill(choice.color.opacity(0.18))
+                                        Circle().fill(choice.color).padding(10)
+                                        if selectedColor == choice {
+                                            Image(systemName: "checkmark")
+                                                .font(AppTypography.body.weight(.bold))
+                                                .foregroundStyle(choice == .yellow ? Color.black : Color.white)
+                                        }
+                                    }
+                                    .frame(width: 48, height: 48)
+                                    .contentShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(choice.title)
+                                .accessibilityAddTraits(selectedColor == choice ? [.isSelected] : [])
+                            }
+                        }
+                    }
+                    Text("This color is used wherever this tag appears.")
+                        .font(AppTypography.caption).foregroundStyle(.secondary)
+                    if !isNew {
+                        Button(role: .destructive) { confirmingDeletion = true } label: {
+                            Label("Delete Tag", systemImage: "trash")
+                        }
+                        .appGlassButton(size: .medium, shape: .rectangle)
+                    }
+                    if let error { Text(error).font(AppTypography.supporting).foregroundStyle(.red) }
+                }
+            }
+            .frame(maxHeight: 300)
+        }
+        .padding(24)
+        .confirmationDialog("Delete “\(name)”?", isPresented: $confirmingDeletion, titleVisibility: .visible) {
+            Button("Delete Tag", role: .destructive, action: delete)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the tag from your library and every task and subtask. Your tasks will remain.")
+        }
+    }
+    private func delete() {
+        do {
+            try StoreWriter.deleteTag(name, in: context)
+            onDelete?()
+            onClose()
+        } catch { self.error = error.localizedDescription }
+    }
+    private func save() {
+        guard !isNew || TagRules.isValidNewName(name) else {
+            error = "Use a tag name with 1–\(TagRules.maximumNameLength) characters on one line."
+            return
+        }
+        let profile = AppProfile.current(in: profiles) ?? AppProfile(stageNames: appearance.stageNames, accent: appearance.accent)
+        if profile.modelContext == nil {
+            profile.appearanceMode = appearance.mode.rawValue
+            context.insert(profile)
+        }
+        let canonical = TagRules.existing(name, in: profiles.flatMap(\.tagNames)) ?? name
+        profile.tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + [canonical])
+        profile.setColor(selectedColor, forTag: canonical)
+        profile.updatedAt = Date()
+        do {
+            // A confirmed tag is a reusable library item even if its task draft is later cancelled.
+            try StoreWriter.save(context)
+            onCreate(canonical)
+            onClose()
+        } catch { self.error = error.localizedDescription }
+    }
+}
+
+/// Wrap whole chips, measuring their natural width instead of forcing equal grid cells.
+struct TagFlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    private func arrangement(width: CGFloat, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+        for subview in subviews {
+            let natural = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(ProposedViewSize(width: min(natural.width, width), height: nil))
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            usedWidth = max(usedWidth, x + size.width)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return (CGSize(width: usedWidth, height: y + rowHeight), frames)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrangement(width: max(0, proposal.width ?? .infinity), subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrangement(width: bounds.width, subviews: subviews)
+        for (subview, frame) in zip(subviews, result.frames) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                          anchor: .topLeading, proposal: ProposedViewSize(frame.size))
+        }
+    }
+}
+
+struct TagChip: View {
+    static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 4, style: .continuous) }
+    let name: String
+    let color: Color
+    var compact = false
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(name).lineLimit(1).truncationMode(.tail)
+        }
+        .font(compact ? AppTypography.caption : AppTypography.supporting)
+        .foregroundStyle(.primary)
+        .padding(.horizontal, compact ? 7 : 10)
+        .padding(.vertical, compact ? 3 : 6)
+        .background(color.opacity(0.15), in: Self.shape)
+    }
+}
+
+/// Selects the longest alphabetical prefix that fits; hidden tags are absent from accessibility too.
+struct TaskCardTags: View {
+    let tags: [String]
+    @Query private var profiles: [AppProfile]
+    @Environment(\.boardAppearance) private var appearance
+    var body: some View {
+        let ordered = TagRules.normalized(tags)
+        ViewThatFits(in: .horizontal) {
+            ForEach((1...max(1, ordered.count)).reversed(), id: \.self) { count in
+                HStack(spacing: 5) {
+                    ForEach(Array(ordered.prefix(count)), id: \.self) { tag in
+                        TagChip(name: tag, color: (AppProfile.current(in: profiles)?.color(forTag: tag) ?? appearance.accent).color, compact: true)
+                    }
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            Color.clear.frame(width: 0, height: 0).accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+
+/// The full rounded tag is the edit target, with no extra edit icon.
+struct EditableTagChip: View {
+    let name: String
+    let color: Color
+    var onDelete: () -> Void = {}
+    @Environment(\.editTag) private var editTag
+    var body: some View {
+        Button { editTag(name, onDelete) } label: {
+            TagChip(name: name, color: color)
+                .contentShape(TagChip.shape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Edit tag " + name)
     }
 }

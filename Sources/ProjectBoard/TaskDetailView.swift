@@ -12,6 +12,7 @@ struct TaskDetailView: View {
     let project: Project
     @Bindable var task: BoardTask
     let onClose: (() -> Void)?
+    @Query private var profiles: [AppProfile]
     @State private var showingEditor = false
     @State private var selectedSubtask: BoardTask?
     @State private var taskWasDeleted = false
@@ -26,6 +27,7 @@ struct TaskDetailView: View {
             #endif
         }
         .modifier(EditorSizing(width: 620, height: 700))
+        .modifier(TagCreationHost())
         #if os(iOS)
         .sheet(isPresented: $showingEditor, onDismiss: finishEditing) {
             TaskEditor(
@@ -42,7 +44,7 @@ struct TaskDetailView: View {
         #else
         .overlay {
             if showingEditor {
-                MacInWindowModal {
+                MacInWindowModal(onDismiss: { showingEditor = false; finishEditing() }) {
                     TaskEditor(
                         project: project,
                         task: task,
@@ -56,7 +58,7 @@ struct TaskDetailView: View {
                     )
                 }
             } else if let selectedSubtask {
-                MacInWindowModal {
+                MacInWindowModal(onDismiss: { self.selectedSubtask = nil }) {
                     TaskDetailView(
                         project: project,
                         task: selectedSubtask,
@@ -76,15 +78,21 @@ struct TaskDetailView: View {
     private var detailLayout: some View {
         VStack(spacing: 0) {
             ZStack {
-                Text("Task Details").font(AppTypography.pageTitle)
+                Text(task.parentTask == nil ? "Task Details" : "Subtask Details")
+                    .font(AppTypography.pageTitle)
                 HStack {
-                    Button(action: close) { Image(systemName: "xmark") }
-                        .appGlassButton(size: .large, shape: .circle)
-                        .keyboardShortcut(.cancelAction)
-                        .accessibilityLabel("Close")
+                    if task.parentTask == nil {
+                        AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Close", action: close)
+                            .keyboardShortcut(.cancelAction)
+                    } else {
+                        Button(action: close) { Image(systemName: "chevron.left") }
+                            .appGlassButton(size: .medium, shape: .circle)
+                            .keyboardShortcut(.cancelAction)
+                            .accessibilityLabel("Back to parent task")
+                    }
                     Spacer()
                     Button { showingEditor = true } label: { Image(systemName: "pencil") }
-                        .appGlassButton(size: .large, shape: .circle)
+                        .appGlassButton(size: .medium, shape: .circle)
                         .keyboardShortcut("e", modifiers: .command)
                         .help("Edit Task")
                         .accessibilityLabel("Edit Task")
@@ -98,20 +106,28 @@ struct TaskDetailView: View {
     }
 
     private var detailContent: some View {
-        Form {
-            titleBlock
-            Section { metadataGrid.padding(.vertical, 4) }
-            descriptionSection
-            if !task.tags.isEmpty { tagsSection }
-            subtasksSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                titleBlock
+                metadataGrid
+                descriptionSection
+                if !task.tags.isEmpty { tagsSection }
+                subtasksSection
+            }
+            .padding(24)
         }
-        .formStyle(.grouped)
     }
 
     private var titleBlock: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(task.title)
+                .font(AppTypography.boardTitle)
+                .foregroundStyle(.white)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+
             VStack(alignment: .leading, spacing: 8) {
-                Label(project.name, systemImage: "rectangle.3.group")
+                Label(project.name, systemImage: AppSymbols.project)
                     .font(AppTypography.contextTitle)
                     .foregroundStyle(.secondary)
 
@@ -121,15 +137,9 @@ struct TaskDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 8)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-        } header: {
-            Text(task.title)
-                .font(AppTypography.boardTitle)
-                .foregroundStyle(.white)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .textCase(nil)
+            .taskDetailCardSurface()
         }
     }
 
@@ -168,19 +178,10 @@ struct TaskDetailView: View {
 
     private var tagsSection: some View {
         TaskDetailSection(title: "Tags") {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 160), alignment: .leading)],
-                alignment: .leading,
-                spacing: 8
-            ) {
-                ForEach(task.tags, id: \.self) { tag in
-                    Text("#\(tag)")
-                        .font(AppTypography.supporting)
-                        .foregroundStyle(Color.accentColor)
-                        .lineLimit(1)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.accentColor.opacity(0.1), in: Capsule())
+            TagFlowLayout {
+                ForEach(TagRules.normalized(task.tags), id: \.self) { tag in
+                    EditableTagChip(name: tag, color: (AppProfile.current(in: profiles)?.color(forTag: tag) ?? appearance.accent).color)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -290,7 +291,8 @@ private struct TaskMetadataCard: View {
                 .font(AppTypography.itemTitle)
                 .lineLimit(2)
         }
-        .padding(14)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
         .taskDetailCardSurface()
     }
@@ -301,54 +303,21 @@ private struct TaskDetailSection<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        Section {
-            content()
-                .padding(.vertical, 6)
-        } header: {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(AppTypography.sectionTitle)
                 .foregroundStyle(.white)
-                .textCase(nil)
+
+            content()
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .taskDetailCardSurface()
         }
-    }
-}
-
-private struct TaskDetailCardSurface: ViewModifier {
-    private var background: Color {
-        #if os(iOS)
-        Color(uiColor: .secondarySystemGroupedBackground)
-        #else
-        Color(nsColor: .controlBackgroundColor)
-        #endif
-    }
-
-    private var surfaceTint: Color {
-        #if os(iOS)
-        Color.clear
-        #else
-        Color.primary.opacity(0.04)
-        #endif
-    }
-
-    func body(content: Content) -> some View {
-        content
-            .background {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(background)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(surfaceTint)
-                    }
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-            }
     }
 }
 
 private extension View {
     func taskDetailCardSurface() -> some View {
-        modifier(TaskDetailCardSurface())
+        appCardSurface()
     }
 }

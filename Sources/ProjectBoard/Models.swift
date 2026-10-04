@@ -49,6 +49,9 @@ final class BoardTask {
     var statusValue: String = "backlog"
     var priorityValue: Int = 1
     var dueDate: Date?
+    /// Server-side Calendar identity helps another device reuse the same exported event.
+    var calendarExternalIdentifier: String?
+    var calendarLastExportedDate: Date?
     var tags: [String] = []
     /// Retained temporarily so existing stores can convert V1 checklist rows into child tasks.
     var checklist: [ChecklistItem] = []
@@ -84,7 +87,7 @@ final class BoardTask {
         subtasks = []
     }
     var status: TaskStatus {
-        get { TaskStatus(rawValue: statusValue) ?? .backlog }
+        get { TaskStatus(storedValue: statusValue) }
         set { statusValue = newValue.rawValue }
     }
     var priority: TaskPriority {
@@ -122,24 +125,71 @@ enum LegacyChecklistMigrator {
     }
 }
 
+/// Persist the four-stage upgrade without changing user edit timestamps or task relationships.
+/// The read-time mapping also covers legacy records arriving later through iCloud.
+@MainActor
+enum RetiredStageMigrator {
+    static func run(in context: ModelContext) throws {
+        let tasks = try context.fetch(FetchDescriptor<BoardTask>())
+        let profiles = try context.fetch(FetchDescriptor<AppProfile>())
+        var changed = false
+        for task in tasks where task.statusValue == "blocked" {
+            task.status = .inProgress
+            changed = true
+        }
+        for profile in profiles where profile.stageNames.count == 5 {
+            profile.stageNames = BoardAppearance.activeStageNames(profile.stageNames)
+            changed = true
+        }
+        if changed { try StoreWriter.save(context) }
+    }
+}
+
 /// A profile is saved only after an explicit settings edit, avoiding startup-created duplicates.
 /// If offline devices independently create profiles, the newest saved profile wins deterministically.
 @Model
 final class AppProfile {
     var id: UUID = UUID()
     var updatedAt: Date = Date()
-    var stageNames: [String] = ["Backlog", "Planned", "In Progress", "Blocked", "Done"]
+    var stageNames: [String] = ["Backlog", "Planned", "In Progress", "Done"]
     var accentName: String = "blue"
     var appearanceMode: String = "system"
     var tagNames: [String] = []
+    /// Additive scalar storage keeps existing local and CloudKit profiles compatible.
+    var tagColorsJSON: String = "{}"
+    var appleUserIdentifier: String?
+    var displayName: String?
+    var onboardingFocusValue: String?
+    var onboardingOutcomeValue: String?
+    var onboardingCompletedAt: Date?
 
     init(stageNames: [String], accent: AccentChoice) {
         self.stageNames = stageNames
         accentName = accent.rawValue
     }
+    func color(forTag name: String) -> AccentChoice? {
+        let colors = (try? JSONDecoder().decode([String: String].self, from: Data(tagColorsJSON.utf8))) ?? [:]
+        return colors[name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()].flatMap(AccentChoice.init(rawValue:))
+    }
+    func setColor(_ color: AccentChoice, forTag name: String) {
+        var colors = (try? JSONDecoder().decode([String: String].self, from: Data(tagColorsJSON.utf8))) ?? [:]
+        colors[name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()] = color.rawValue
+        if let data = try? JSONEncoder().encode(colors), let json = String(data: data, encoding: .utf8) {
+            tagColorsJSON = json
+        }
+    }
+    func removeTag(_ name: String) {
+        tagNames.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
+        var colors = (try? JSONDecoder().decode([String: String].self, from: Data(tagColorsJSON.utf8))) ?? [:]
+        colors.removeValue(forKey: name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        if let data = try? JSONEncoder().encode(colors), let json = String(data: data, encoding: .utf8) {
+            tagColorsJSON = json
+        }
+    }
     var appearance: BoardAppearance {
         BoardAppearance(stageNames: stageNames, accent: AccentChoice(rawValue: accentName) ?? .blue, mode: AppearanceMode(rawValue: appearanceMode) ?? .system)
     }
+    var hasCompletedOnboarding: Bool { onboardingCompletedAt != nil && appleUserIdentifier != nil }
     static func current(in profiles: [AppProfile]) -> AppProfile? {
         profiles.sorted {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
@@ -152,7 +202,10 @@ final class AppProfile {
 @MainActor
 enum StoreWriter {
     static func save(_ context: ModelContext) throws {
-        do { try context.save() }
+        do {
+            try context.save()
+            NotificationCenter.default.post(name: Notification.Name("TierinStoreDidSave"), object: context)
+        }
         catch { context.rollback(); throw error }
     }
 }
@@ -166,13 +219,52 @@ extension Project: WorkspaceItem {}
 extension ProjectArea: WorkspaceItem {}
 
 extension StoreWriter {
+    static func deleteTag(_ name: String, in context: ModelContext) throws {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profiles = try context.fetch(FetchDescriptor<AppProfile>())
+        let current = AppProfile.current(in: profiles)
+        // Clean every profile so an older offline profile cannot restore the deleted library item.
+        for profile in profiles { profile.removeTag(name) }
+        current?.updatedAt = Date()
+        for task in try context.fetch(FetchDescriptor<BoardTask>()) {
+            let remaining = task.tags.filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) != .orderedSame }
+            if remaining != task.tags {
+                task.tags = remaining
+                task.updatedAt = Date()
+            }
+        }
+        try save(context)
+    }
+
+    static func requireCreationAccess(_ resource: WorkspaceResource, in context: ModelContext, hasUnlimited: Bool) throws {
+        guard !hasUnlimited else { return }
+        let count: Int
+        switch resource {
+        case .project: count = try context.fetchCount(FetchDescriptor<Project>())
+        case .area: count = try context.fetchCount(FetchDescriptor<ProjectArea>())
+        }
+        guard resource.canCreate(existingCount: count, hasUnlimited: false) else {
+            throw WorkspaceLimitError(resource)
+        }
+    }
+
     /// Mutate only on explicit Save; retain the shared rollback behavior on failure.
     static func saveItem<Item: WorkspaceItem>(
         _ existing: Item?, name: String, in context: ModelContext,
+        hasUnlimitedAccess: Bool = false,
         create: () -> Item, configure: (Item) -> Void = { _ in }
     ) throws -> Item {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { throw WorkspaceItemError.emptyName }
+        // Recheck the current store immediately before insertion, including items synced
+        // while an editor was open. Edits and deletion never require a subscription.
+        if existing == nil {
+            if Item.self == Project.self {
+                try requireCreationAccess(.project, in: context, hasUnlimited: hasUnlimitedAccess)
+            } else if Item.self == ProjectArea.self {
+                try requireCreationAccess(.area, in: context, hasUnlimited: hasUnlimitedAccess)
+            }
+        }
         let item = existing ?? create()
         if existing == nil { context.insert(item) }
         item.name = cleanName

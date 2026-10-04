@@ -60,6 +60,13 @@ final class PersistenceTests: XCTestCase {
             newer.updatedAt = Date(timeIntervalSince1970: 200)
             newer.appearanceMode = AppearanceMode.dark.rawValue
             newer.tagNames = ["Work", "Personal"]
+            newer.setColor(.purple, forTag: "Work")
+            newer.setColor(.teal, forTag: "Personal")
+            newer.appleUserIdentifier = "apple-user-test"
+            newer.displayName = "Taylor"
+            newer.onboardingFocusValue = "work"
+            newer.onboardingOutcomeValue = "priorities"
+            newer.onboardingCompletedAt = Date(timeIntervalSince1970: 190)
             context.insert(older)
             context.insert(newer)
             try StoreWriter.save(context)
@@ -72,7 +79,85 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(current.appearance.accent, .purple)
         XCTAssertEqual(current.appearance.mode, .dark)
         XCTAssertEqual(current.tagNames, ["Work", "Personal"])
+        XCTAssertEqual(current.color(forTag: " WORK "), .purple)
+        XCTAssertEqual(current.color(forTag: "personal"), .teal)
+        XCTAssertNil(current.color(forTag: "Uncolored legacy tag"))
+        XCTAssertEqual(current.appleUserIdentifier, "apple-user-test")
+        XCTAssertEqual(current.displayName, "Taylor")
+        XCTAssertEqual(current.onboardingFocusValue, "work")
+        XCTAssertEqual(current.onboardingOutcomeValue, "priorities")
+        XCTAssertTrue(current.hasCompletedOnboarding)
         XCTAssertEqual(AppProfile.current(in: profiles.reversed())?.id, current.id)
+    }
+
+    @MainActor func testDeletingTagRemovesEveryUseAndPreservesOtherTagsAndTasks() throws {
+        let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+        let context = ModelContext(container)
+        let profile = AppProfile(stageNames: TaskStatus.allCases.map(\.title), accent: .blue)
+        profile.tagNames = ["Work", "Keep"]
+        profile.setColor(.red, forTag: "Work")
+        profile.setColor(.green, forTag: "Keep")
+        let duplicate = AppProfile(stageNames: TaskStatus.allCases.map(\.title), accent: .blue)
+        duplicate.tagNames = ["work"]
+        let parent = BoardTask(title: "Parent")
+        parent.tags = ["WORK", "Keep"]
+        let child = BoardTask(title: "Child")
+        child.parentTask = parent
+        child.tags = ["work"]
+        for item in [parent, child] { context.insert(item) }
+        context.insert(profile)
+        context.insert(duplicate)
+        try context.save()
+        try StoreWriter.deleteTag("Work", in: context)
+        XCTAssertEqual(parent.tags, ["Keep"])
+        XCTAssertTrue(child.tags.isEmpty)
+        XCTAssertEqual(profile.tagNames, ["Keep"])
+        XCTAssertTrue(duplicate.tagNames.isEmpty)
+        XCTAssertNil(profile.color(forTag: "work"))
+        XCTAssertEqual(profile.color(forTag: "keep"), .green)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<BoardTask>()), 2)
+        XCTAssertEqual(child.parentTask?.id, parent.id)
+    }
+
+    @MainActor func testRetiredStageUpgradePreservesTasksAndProfileNames() throws {
+        let schema = Schema([Project.self, BoardTask.self, ProjectArea.self, AppProfile.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+        let context = ModelContext(container)
+        let project = Project(name: "Upgrade")
+        context.insert(project)
+        let task = BoardTask(title: "Waiting task", project: project)
+        task.statusValue = "blocked"
+        task.tags = ["Keep"]
+        task.details = "Preserve description"
+        let child = BoardTask(title: "Waiting subtask", project: project)
+        child.statusValue = "blocked"
+        child.parentTask = task
+        let done = BoardTask(title: "Finished", status: .done, project: project)
+        let profile = AppProfile(stageNames: ["Ideas", "Next", "Active", "Waiting", "Shipped"], accent: .teal)
+        for item in [task, child, done] { context.insert(item) }
+        context.insert(profile)
+        try context.save()
+        let timestamp = profile.updatedAt
+        XCTAssertEqual(task.status, .inProgress)
+        try RetiredStageMigrator.run(in: context)
+        XCTAssertEqual(task.statusValue, "inProgress")
+        XCTAssertEqual(child.statusValue, "inProgress")
+        XCTAssertEqual(task.tags, ["Keep"])
+        XCTAssertEqual(task.details, "Preserve description")
+        XCTAssertEqual(child.parentTask?.id, task.id)
+        XCTAssertEqual(project.progress, 0.5)
+        XCTAssertEqual(profile.stageNames, ["Ideas", "Next", "Active", "Shipped"])
+        XCTAssertEqual(profile.updatedAt, timestamp)
+        try RetiredStageMigrator.run(in: context)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<BoardTask>()), 3)
+        // An older device can upload another legacy value after the startup migration.
+        task.statusValue = "blocked"
+        XCTAssertEqual(task.status, .inProgress)
     }
 
     @MainActor func testUpgradeFromAreasSchemaToCloudSchema() throws {
@@ -286,7 +371,7 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(task.tags, ["v1"])
         XCTAssertEqual(task.dueDate, Date(timeIntervalSince1970: 1800000000))
         XCTAssertEqual(task.checklist.first?.isComplete, true)
-        task.status = .blocked
+        task.status = .inProgress
         try StoreWriter.save(context)
         XCTAssertEqual(project.progress, 0)
         context.delete(project)
