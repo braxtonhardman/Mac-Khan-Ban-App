@@ -1,0 +1,27 @@
+name: iPhone build
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build iPhone app for Simulator
+        run: |
+          xcodebuild \
+            -project ProjectBoard.xcodeproj \
+            -scheme "ProjectBoard iPhone iCloud" \
+            -configuration Debug-iCloud \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/ProjectBoardDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
