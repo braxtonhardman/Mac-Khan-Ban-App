@@ -482,7 +482,6 @@ struct TagSelector: View {
     }
 }
 
-    
 /// Renders a practical subset of Markdown while keeping the stored description as plain text.
 struct MarkdownDescriptionPreview: View {
     let markdown: String
