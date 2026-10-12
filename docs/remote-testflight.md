@@ -14,6 +14,6 @@ The [iPhone build workflow](../.github/workflows/iphone-build.yml) compiles the 
 5. Merge the automatic upload workflow into `main`. The merge push triggers its first Simulator build and, if successful, the TestFlight upload. Every later push to `main` does the same.
 6. After Apple processes the upload, choose the build for an internal tester group in App Store Connect → TestFlight. Install it from TestFlight on your iPhone.
 
-For a one-off upload without a push to `main`, open Actions → iPhone build → Run workflow and check **Upload to TestFlight**. The manual choice defaults to off. Xcode manages the build number for each upload. Apple's processing and any required TestFlight app information follow the GitHub run.
+For a one-off upload without a push to `main`, open Actions → iPhone build → Run workflow and check **Upload to TestFlight**. The manual choice defaults to off. The workflow sets a unique build number from the GitHub run number, exports a signed IPA, and uploads it with Apple's altool. Apple's processing and any required TestFlight app information follow the GitHub run.
 
 If signing reports a cloud-managed certificate permission error, check the API key role and the team's cloud-managed distribution certificate access. If provisioning fails, verify the bundle ID, iCloud capability, container, and production CloudKit schema in the Apple Developer account.
