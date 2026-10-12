@@ -1,6 +1,6 @@
 # ChatGPT profile connection
 
-Profile → Accounts → ChatGPT opens a connection page. Continue with ChatGPT starts OpenAI's public-client registration flow with PKCE, a fresh state and nonce, and an installation-specific host ID. Optional ChatGPT plan usage is requested only when its toggle is enabled. This PR establishes profile connection; task generation and inference are not included.
+Profile → Accounts → ChatGPT opens a connection page. Continue with ChatGPT starts OpenAI's public-client registration flow with PKCE, a fresh state and nonce, and an installation-specific host ID. Optional ChatGPT plan usage scopes, including renewable access, are requested only when its toggle is enabled; identity-only sign-in requests openid/profile/email. This PR establishes profile connection; task generation and inference are not included.
 
 The browser returns to an IPv4 loopback listener bound only to 127.0.0.1 on an ephemeral port. On Mac the default browser opens; on iPhone an in-app Safari browser keeps Tierin in the foreground while the listener runs. The listener starts before authorization and expires after three minutes. The iPhone Safari redirect path needs live device verification before merge.
 
