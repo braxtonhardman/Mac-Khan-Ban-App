@@ -63,6 +63,35 @@ jobs:
             <key>manageAppVersionAndBuildNumber</key><true/>
           </dict></plist>
           PLIST
+      - name: Probe App Store Connect access
+        run: |
+          node <<'JS'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const key = fs.readFileSync(process.env.RUNNER_TEMP + '/AuthKey.p8');
+          const enc = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+          const now = Math.floor(Date.now() / 1000);
+          const body = enc({iss: process.env.APP_STORE_CONNECT_ISSUER_ID, iat: now, exp: now + 300, aud: 'appstoreconnect-v1'});
+          const head = enc({alg: 'ES256', kid: process.env.APP_STORE_CONNECT_KEY_ID, typ: 'JWT'});
+          const input = head + '.' + body;
+          const signature = crypto.sign('sha256', Buffer.from(input), {key, dsaEncoding: 'ieee-p1363'}).toString('base64url');
+          const endpoints = [
+            ['app lookup', '/v1/apps?filter%5BbundleId%5D=com.braxtonhardman.ProjectBoard&fields%5Bapps%5D=bundleId,name&limit=10'],
+            ['distribution certificates', '/v1/certificates?filter%5BcertificateType%5D=DISTRIBUTION&limit=10'],
+            ['App Store profiles', '/v1/profiles?filter%5BprofileType%5D=IOS_APP_STORE&limit=10']
+          ];
+          (async () => {
+            for (const [label, path] of endpoints) {
+              try {
+                const res = await fetch('https://api.appstoreconnect.apple.com' + path, {headers: {Authorization: 'Bearer ' + input + '.' + signature}});
+                const data = await res.json();
+                const codes = (data.errors || []).map(e => e.code || e.status).join(',');
+                console.log(label + ': HTTP ' + res.status + ', records=' + (data.data?.length ?? 'n/a') + (codes ? ', error codes=' + codes : ''));
+                if (label === 'app lookup' && res.ok) console.log('bundle IDs: ' + data.data.map(e => e.attributes?.bundleId).join(','));
+              } catch (e) { console.log(label + ': request failed (' + e.name + ')'); }
+            }
+          })();
+          JS
       - name: Archive iPhone app
         run: |
           xcodebuild \
