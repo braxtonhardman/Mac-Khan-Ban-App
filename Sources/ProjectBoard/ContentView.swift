@@ -601,12 +601,13 @@ struct ProjectBoardView: View {
                         spacing: spacing,
                         columnWidth: columnWidth,
                         columnHeight: columnHeight,
-                        horizontalPadding: horizontalPadding
+                        horizontalPadding: compactLayout ? 0 : horizontalPadding
                     )
                     .scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
+                .padding(.horizontal, compactLayout ? horizontalPadding : 0)
             }
         }
         #if os(macOS)
