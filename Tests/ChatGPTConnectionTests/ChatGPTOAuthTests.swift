@@ -13,7 +13,7 @@ func b64(_ data: Data) -> String {
 }
 
 @main struct OAuthTests {
-    static func main() throws {
+    @MainActor static func main() async throws {
         let redirect = URL(string: "http://127.0.0.1:1455/auth/callback")!
         let authorize = ChatGPTOAuth.authorizationURL(host: "urn:uuid:test", callback: redirect,
             state: "state", nonce: "nonce", verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", account: nil, planUsage: true)
@@ -70,6 +70,23 @@ func b64(_ data: Data) -> String {
         let parts = signed.components(separatedBy: ".")
         let tampered = parts[0] + "." + b64(Data("{\"sub\":\"attacker\"}".utf8)) + "." + parts[2]
         rejects { _ = try ChatGPTOAuth.verifyIdentity(tampered, jwks: jwks, client: "oaiapp_test", nonce: "nonce") }
-        print("OAuth callback, PKCE, form encoding and signed identity tests passed.")
+
+        let listener = ChatGPTCallbackListener()
+        let callback = try await listener.start(state: "listener-state")
+        async let received = listener.wait()
+        let wrong = URL(string: callback.absoluteString + "?code=c&state=wrong&client_id=oaiapp_test")!
+        let (_, rejected) = try await URLSession.shared.data(from: wrong)
+        expect((rejected as? HTTPURLResponse)?.statusCode == 400, "Wrong state rejected without consuming listener")
+        let valid = URL(string: callback.absoluteString + "?code=c&state=listener-state&client_id=oaiapp_test")!
+        let (_, accepted) = try await URLSession.shared.data(from: valid)
+        expect((accepted as? HTTPURLResponse)?.statusCode == 200, "Valid loopback callback")
+        let returned = try await received
+        expect(returned == valid, "Callback returned intact")
+        listener.cancel()
+        let cancelled = ChatGPTCallbackListener()
+        _ = try await cancelled.start(state: "cancelled")
+        cancelled.cancel()
+        do { _ = try await cancelled.wait(); preconditionFailure("Cancelled wait must fail immediately") } catch {}
+        print("OAuth signature, PKCE, callback listener and cancellation tests passed.")
     }
 }

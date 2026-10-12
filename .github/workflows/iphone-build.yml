@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test OAuth validation without a live account
         run: |
-          swiftc -parse-as-library Sources/ProjectBoard/ChatGPTOAuth.swift Tests/ChatGPTConnectionTests/ChatGPTOAuthTests.swift -o "$RUNNER_TEMP/ChatGPTOAuthTests"
+          swiftc -parse-as-library Sources/ProjectBoard/ChatGPTCallbackListener.swift Sources/ProjectBoard/ChatGPTOAuth.swift Tests/ChatGPTConnectionTests/ChatGPTOAuthTests.swift -o "$RUNNER_TEMP/ChatGPTOAuthTests"
           "$RUNNER_TEMP/ChatGPTOAuthTests"
       - name: Build Mac app
         run: |
