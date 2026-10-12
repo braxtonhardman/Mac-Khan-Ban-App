@@ -68,6 +68,7 @@ struct ProfileSettingsView: View {
     @State private var error: String?
     @State private var showingSync = false
     @State private var selectedIntegration: AccountIntegration?
+    @State private var gitHub = GitHubConnection()
 
     var body: some View {
         NavigationStack {
@@ -85,8 +86,8 @@ struct ProfileSettingsView: View {
                                 SettingsRowLabel(
                                     icon: integration.icon,
                                     title: integration.title,
-                                    subtitle: "Not connected",
-                                    value: "Set up later"
+                                    subtitle: integration == .github && gitHub.isConnected ? "Connected on this device" : "Not connected",
+                                    value: integration == .github ? (gitHub.isConnected ? "Connected" : "Connect") : "Set up later"
                                 )
                             }
                             .buttonStyle(.plain)
@@ -145,12 +146,19 @@ struct ProfileSettingsView: View {
         .modifier(EditorSizing(width: 560, height: 720))
         .onAppear {
             guard !loaded else { return }
+            gitHub.load()
             draft = BoardAppearance(stageNames: TaskStatus.allCases.map { appearance.title(for: $0) }, accent: appearance.accent, mode: appearance.mode)
             tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
             loaded = true
         }
         .sheet(isPresented: $showingSync) { SyncStatusView() }
-        .sheet(item: $selectedIntegration) { AccountIntegrationView(integration: $0) }
+        .sheet(item: $selectedIntegration) { integration in
+            if integration == .github {
+                GitHubProfileView(connection: gitHub)
+            } else {
+                AccountIntegrationView(integration: integration)
+            }
+        }
     }
 
     private var settingsHeader: some View {
