@@ -67,6 +67,7 @@ struct ProfileSettingsView: View {
     @State private var loaded = false
     @State private var error: String?
     @State private var showingSync = false
+    @State private var chatGPT = ChatGPTConnection()
     @State private var selectedIntegration: AccountIntegration?
 
     var body: some View {
@@ -85,8 +86,8 @@ struct ProfileSettingsView: View {
                                 SettingsRowLabel(
                                     icon: integration.icon,
                                     title: integration.title,
-                                    subtitle: "Not connected",
-                                    value: "Set up later"
+                                    subtitle: integration == .openAI ? (chatGPT.account?.email ?? (chatGPT.account == nil ? "Not connected" : "ChatGPT account")) : "Not connected",
+                                    value: integration == .openAI ? (chatGPT.account == nil ? "Connect" : "Connected") : "Set up later"
                                 )
                             }
                             .buttonStyle(.plain)
@@ -145,12 +146,19 @@ struct ProfileSettingsView: View {
         .modifier(EditorSizing(width: 560, height: 720))
         .onAppear {
             guard !loaded else { return }
+            chatGPT.load()
             draft = BoardAppearance(stageNames: TaskStatus.allCases.map { appearance.title(for: $0) }, accent: appearance.accent, mode: appearance.mode)
             tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
             loaded = true
         }
         .sheet(isPresented: $showingSync) { SyncStatusView() }
-        .sheet(item: $selectedIntegration) { AccountIntegrationView(integration: $0) }
+        .sheet(item: $selectedIntegration) { integration in
+            if integration == .openAI {
+                ChatGPTProfileView(connection: chatGPT)
+            } else {
+                AccountIntegrationView(integration: integration)
+            }
+        }
     }
 
     private var settingsHeader: some View {
@@ -262,7 +270,7 @@ private enum AccountIntegration: String, CaseIterable, Identifiable {
     case openAI
 
     var id: String { rawValue }
-    var title: String { self == .github ? "GitHub" : "OpenAI / ChatGPT" }
+    var title: String { self == .github ? "GitHub" : "ChatGPT" }
     var icon: String { self == .github ? "chevron.left.forwardslash.chevron.right" : "sparkles" }
     var summary: String {
         switch self {

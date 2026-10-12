@@ -33,9 +33,21 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+  chatgpt-validation:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test OAuth validation without a live account
+        run: |
+          swiftc -parse-as-library Sources/ProjectBoard/ChatGPTOAuth.swift Tests/ChatGPTConnectionTests/ChatGPTOAuthTests.swift -o "$RUNNER_TEMP/ChatGPTOAuthTests"
+          "$RUNNER_TEMP/ChatGPTOAuthTests"
+      - name: Build Mac app
+        run: |
+          xcodebuild -project ProjectBoard.xcodeproj -scheme ProjectBoard -configuration Debug -destination "generic/platform=macOS" CODE_SIGNING_ALLOWED=NO build
+
   testflight-upload:
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight) }}
-    needs: simulator-build
+    needs: [simulator-build, chatgpt-validation]
     runs-on: macos-26
     env:
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
