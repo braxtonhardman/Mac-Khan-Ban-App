@@ -159,10 +159,7 @@ struct TaskDetailView: View {
 
     private var descriptionSection: some View {
         TaskDetailSection(title: "Description") {
-            Text(task.details.isEmpty ? "No description" : task.details)
-                .foregroundStyle(task.details.isEmpty ? .secondary : .primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            MarkdownDescriptionPreview(markdown: task.details)
         }
     }
 

@@ -15,6 +15,7 @@ struct TaskEditor: View {
     let onClose: (() -> Void)?
     @State private var title: String
     @State private var details: String
+    @State private var isDescriptionEditing = false
     @State private var status: TaskStatus
     @State private var priority: TaskPriority
     @State private var dueDate: Date?
@@ -140,10 +141,23 @@ struct TaskEditor: View {
                     }
                 }
                 AppSection("Description", headingColor: .white) {
-                    TextEditor(text: $details)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 85)
-                        .accessibilityLabel("Task description")
+                    HStack {
+                        Spacer()
+                        Button(isDescriptionEditing ? "Preview" : "Edit") {
+                            isDescriptionEditing.toggle()
+                        }
+                        .appGlassButton(size: .small, shape: .rectangle)
+                        .accessibilityLabel(isDescriptionEditing ? "Preview task description" : "Edit task description")
+                    }
+                    if isDescriptionEditing {
+                        TextEditor(text: $details)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 85)
+                            .accessibilityLabel("Task description Markdown")
+                    } else {
+                        MarkdownDescriptionPreview(markdown: details)
+                            .frame(maxWidth: .infinity, minHeight: 85, alignment: .topLeading)
+                    }
                 }
                 AppSection("Details", headingColor: .white) {
                     dueDateField
@@ -465,5 +479,154 @@ struct TagSelector: View {
         query = ""
         searchFocused = false
         showingSuggestions = false
+    }
+}
+
+/// Renders a practical subset of Markdown while keeping the stored description as plain text.
+struct MarkdownDescriptionPreview: View {
+    let markdown: String
+
+    var body: some View {
+        if markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text("No description")
+                .font(AppTypography.body)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(blocks) { block in
+                    blockView(block)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+            .tint(Color.accentColor)
+        }
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: Block) -> some View {
+        switch block.kind {
+        case .paragraph:
+            inlineText(block.content)
+                .font(AppTypography.body)
+                .fixedSize(horizontal: false, vertical: true)
+        case .heading(let level):
+            inlineText(block.content)
+                .font(level == 1 ? AppTypography.pageTitle : level == 2 ? AppTypography.sectionTitle : AppTypography.itemTitle)
+                .fixedSize(horizontal: false, vertical: true)
+        case .bullet:
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("•")
+                inlineText(block.content)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(AppTypography.body)
+        case .number(let marker):
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(marker)
+                inlineText(block.content)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(AppTypography.body)
+        case .quote:
+            HStack(alignment: .top, spacing: 10) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+                inlineText(block.content)
+                    .font(AppTypography.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .code:
+            Text(block.content)
+                .font(AppTypography.supporting.monospaced())
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                .textSelection(.enabled)
+        }
+    }
+
+    private func inlineText(_ source: String) -> Text {
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        guard let attributed = try? AttributedString(markdown: source, options: options) else {
+            return Text(source)
+        }
+        return Text(attributed)
+    }
+
+    private var blocks: [Block] {
+        var result: [Block] = []
+        var paragraph: [String] = []
+        var paragraphStart = 0
+        var code: [String] = []
+        var codeStart = 0
+        var inCode = false
+
+        func flushParagraph() {
+            guard !paragraph.isEmpty else { return }
+            result.append(Block(id: paragraphStart, kind: .paragraph, content: paragraph.joined(separator: "\n")))
+            paragraph.removeAll()
+        }
+
+        for (lineNumber, line) in markdown.components(separatedBy: "\n").enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") {
+                flushParagraph()
+                if inCode {
+                    result.append(Block(id: codeStart, kind: .code, content: code.joined(separator: "\n")))
+                    code.removeAll()
+                } else {
+                    codeStart = lineNumber
+                }
+                inCode.toggle()
+                continue
+            }
+            if inCode {
+                code.append(line)
+                continue
+            }
+            if trimmed.isEmpty {
+                flushParagraph()
+                continue
+            }
+            let hashes = trimmed.prefix(while: { $0 == "#" }).count
+            if (1...3).contains(hashes), trimmed.dropFirst(hashes).first == " " {
+                flushParagraph()
+                result.append(Block(id: lineNumber, kind: .heading(hashes), content: String(trimmed.dropFirst(hashes + 1))))
+            } else if ["- ", "* ", "+ "].contains(where: { trimmed.hasPrefix($0) }) {
+                flushParagraph()
+                result.append(Block(id: lineNumber, kind: .bullet, content: String(trimmed.dropFirst(2))))
+            } else if let dot = trimmed.firstIndex(of: "."), !trimmed[..<dot].isEmpty,
+                      trimmed[..<dot].allSatisfy({ $0.isNumber }),
+                      trimmed[trimmed.index(after: dot)...].first == " " {
+                flushParagraph()
+                let marker = String(trimmed[...dot])
+                result.append(Block(id: lineNumber, kind: .number(marker), content: String(trimmed.dropFirst(marker.count + 1))))
+            } else if trimmed.hasPrefix("> ") {
+                flushParagraph()
+                result.append(Block(id: lineNumber, kind: .quote, content: String(trimmed.dropFirst(2))))
+            } else {
+                if paragraph.isEmpty { paragraphStart = lineNumber }
+                paragraph.append(line)
+            }
+        }
+        if inCode {
+            result.append(Block(id: codeStart, kind: .code, content: code.joined(separator: "\n")))
+        }
+        flushParagraph()
+        return result
+    }
+
+    private struct Block: Identifiable {
+        enum Kind {
+            case paragraph, heading(Int), bullet, number(String), quote, code
+        }
+
+        let id: Int
+        let kind: Kind
+        let content: String
     }
 }
