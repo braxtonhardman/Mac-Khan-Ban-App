@@ -25,6 +25,9 @@ final class Project {
     var id: UUID = UUID()
     var name: String = ""
     var notes: String = ""
+    // GitHub repository metadata may sync with a project; the access token never does.
+    var githubRepositoryID: Int64?
+    var githubRepositoryFullName: String?
     var area: ProjectArea?
     var createdAt: Date = Date()
     @Relationship(deleteRule: .cascade, inverse: \BoardTask.project)
