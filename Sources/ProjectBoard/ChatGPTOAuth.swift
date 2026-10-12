@@ -89,7 +89,7 @@ enum ChatGPTOAuth {
         var values = ["client_id": account?.clientID ?? registration?.clientID ?? "dynamic_agent_client",
                       "ext_agent_host_id": host, "response_type": "code",
                       "redirect_uri": callback.absoluteString, "resource": resource,
-                      "scope": "openid profile email offline_access" + (planUsage ? " resource.invoke chatgpt.tokens.use.direct" : ""),
+                      "scope": "openid profile email" + (planUsage ? " offline_access resource.invoke chatgpt.tokens.use.direct" : ""),
                       "state": state, "nonce": nonce, "code_challenge_method": "S256",
                       "code_challenge": Data(SHA256.hash(data: Data(verifier.utf8))).base64URL]
         if let account { values["id_token_hint"] = account.idToken }
