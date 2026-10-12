@@ -86,3 +86,21 @@ jobs:
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+      - name: Diagnose export failure
+        if: failure()
+        run: |
+          log_dir="$(find "$TMPDIR" -type d -name '*.xcdistributionlogs' -print -quit)"
+          if [ -z "$log_dir" ]; then
+            echo "No Xcode distribution log bundle found."
+            exit 0
+          fi
+          for name in IDEDistribution.critical.log IDEDistribution.standard.log; do
+            log_file="$log_dir/$name"
+            if [ -f "$log_file" ]; then
+              echo "Relevant $name messages:"
+              grep -iE 'error|fail|forbidden|unauthorized|permission|status' "$log_file" \
+                | grep -viE 'Authorization:|Bearer |token=|PRIVATE KEY|password=' \
+                | tail -n 60 \
+                | cut -c 1-400 || true
+            fi
+          done
