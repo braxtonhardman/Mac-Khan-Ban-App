@@ -2,6 +2,8 @@ name: iPhone build
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       upload_to_testflight:
@@ -32,7 +34,7 @@ jobs:
             build
 
   testflight-upload:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight) }}
     needs: simulator-build
     runs-on: macos-26
     env:
