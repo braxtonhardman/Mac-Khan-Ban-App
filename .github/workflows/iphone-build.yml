@@ -57,10 +57,10 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
+            <key>destination</key><string>export</string>
             <key>signingStyle</key><string>automatic</string>
             <key>teamID</key><string>92F54J4WUJ</string>
-            <key>manageAppVersionAndBuildNumber</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
           </dict></plist>
           PLIST
       - name: Archive iPhone app
@@ -75,8 +75,9 @@ jobs:
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             archive
-      - name: Upload to App Store Connect
+      - name: Export signed IPA
         run: |
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/ProjectBoard.xcarchive" \
@@ -86,6 +87,16 @@ jobs:
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+      - name: Upload IPA to App Store Connect
+        run: |
+          ipa_path="$(find "$RUNNER_TEMP/Export" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -n "$ipa_path"
+          xcrun altool --upload-app \
+            --file "$ipa_path" \
+            --type ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --p8-file-path "$RUNNER_TEMP/AuthKey.p8"
       - name: Diagnose export failure
         if: failure()
         run: |
