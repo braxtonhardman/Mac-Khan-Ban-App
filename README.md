@@ -54,7 +54,7 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 
 The top-right profile button opens shared board preferences:
 
-- The settings landing page groups profile and storage status, future account integrations, and general preferences. GitHub and OpenAI/ChatGPT appear as clearly marked, inactive connection placeholders until authentication is implemented.
+- The settings landing page groups profile and storage status, account integrations, and general preferences. GitHub supports read-only repository linking; OpenAI/ChatGPT remains a connection placeholder on this branch.
 - Rename all five stages. Names apply across projects and task status menus; the fifth stage still counts as completed work.
 - Choose red, orange, yellow, green, teal, blue, purple, or pink as the app accent.
 - Choose System, Light, or Dark appearance. Light and Dark override the device setting; System follows each device. The choice syncs with your profile.
@@ -62,6 +62,14 @@ The top-right profile button opens shared board preferences:
 - Save to apply changes, including newly created tags. Cancel discards draft changes. These preferences and the tag library persist in SwiftData and sync in iCloud builds.
 - If two devices independently create a profile while offline, the newest saved profile is selected after sync; there is no database uniqueness constraint. Simultaneous edits remain subject to CloudKit merge behavior.
 - Area collapse remains a local display preference.
+
+## GitHub repository links
+
+1. Create a fine-grained personal access token at [GitHub settings](https://github.com/settings/personal-access-tokens/new). Select only the repositories you want Tierin to list. Repository **Metadata: read** is sufficient; no code, issues, or write permission is needed.
+2. Open **Profile & Settings → GitHub**, paste the token, and connect. The token is verified by listing available repositories and saved only in this device's Keychain.
+3. Open a project editor, choose one repository, and save. The project board menu can open its GitHub page. Choose **None** to unlink it.
+
+The repository ID and full name are project metadata and can sync through CloudKit. Credentials do not sync; connect GitHub separately on each device to change a link. Disconnecting removes the token on that device but preserves existing project links. This version does not import issues or pull requests, and it does not change GitHub data. A token may expire or lose access to a repository; an existing link remains visible until you change it.
 
 ## Apple Calendar deadlines
 
