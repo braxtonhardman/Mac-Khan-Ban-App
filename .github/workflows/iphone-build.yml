@@ -1,0 +1,86 @@
+name: iPhone build
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: "Archive and upload the iPhone app to App Store Connect"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build iPhone app for Simulator
+        run: |
+          xcodebuild \
+            -project ProjectBoard.xcodeproj \
+            -scheme "ProjectBoard iPhone iCloud" \
+            -configuration Debug-iCloud \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/ProjectBoardDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  testflight-upload:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight }}
+    needs: simulator-build
+    runs-on: macos-26
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check signing credentials
+        run: |
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_PRIVATE_KEY"
+      - name: Prepare signing key and export options
+        run: |
+          umask 077
+          printf '%s\n' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>92F54J4WUJ</string>
+            <key>manageAppVersionAndBuildNumber</key><true/>
+          </dict></plist>
+          PLIST
+      - name: Archive iPhone app
+        run: |
+          xcodebuild \
+            -project ProjectBoard.xcodeproj \
+            -scheme "ProjectBoard iPhone iCloud" \
+            -configuration Release-iCloud \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/ProjectBoard.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            archive
+      - name: Upload to App Store Connect
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/ProjectBoard.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/Export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
