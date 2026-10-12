@@ -76,7 +76,9 @@ jobs:
           const input = head + '.' + body;
           const signature = crypto.sign('sha256', Buffer.from(input), {key, dsaEncoding: 'ieee-p1363'}).toString('base64url');
           const endpoints = [
-            ['app lookup', '/v1/apps?filter%5BbundleId%5D=com.braxtonhardman.ProjectBoard&fields%5Bapps%5D=bundleId,name&limit=10'],
+            ['app lookup', '/v1/apps?filter%5BbundleId%5D=com.braxtonhardman.ProjectBoard&fields%5Bapps%5D=bundleId&limit=10'],
+            ['app inventory', '/v1/apps?fields%5Bapps%5D=bundleId&limit=50'],
+            ['bundle ID registration', '/v1/bundleIds?filter%5Bidentifier%5D=com.braxtonhardman.ProjectBoard&limit=10'],
             ['distribution certificates', '/v1/certificates?filter%5BcertificateType%5D=DISTRIBUTION&limit=10'],
             ['App Store profiles', '/v1/profiles?filter%5BprofileType%5D=IOS_APP_STORE&limit=10']
           ];
@@ -87,7 +89,9 @@ jobs:
                 const data = await res.json();
                 const codes = (data.errors || []).map(e => e.code || e.status).join(',');
                 console.log(label + ': HTTP ' + res.status + ', records=' + (data.data?.length ?? 'n/a') + (codes ? ', error codes=' + codes : ''));
-                if (label === 'app lookup' && res.ok) console.log('bundle IDs: ' + data.data.map(e => e.attributes?.bundleId).join(','));
+                if (label === 'app inventory' && res.ok) console.log('expected ID present in unfiltered app inventory: ' + data.data.some(e => e.attributes?.bundleId === 'com.braxtonhardman.ProjectBoard'));
+                if (label === 'bundle ID registration' && res.ok) console.log('expected ID registered: ' + data.data.some(e => e.attributes?.identifier === 'com.braxtonhardman.ProjectBoard'));
+                if (label === 'app inventory' && data.links?.next) console.log('app inventory has more pages');
               } catch (e) { console.log(label + ': request failed (' + e.name + ')'); }
             }
           })();
