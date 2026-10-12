@@ -20,6 +20,12 @@ func b64(_ data: Data) -> String {
         let items = URLComponents(url: authorize, resolvingAgainstBaseURL: false)!.queryItems!
         expect(items.first { $0.name == "code_challenge" }?.value == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "RFC 7636 PKCE vector")
         expect(items.first { $0.name == "client_id" }?.value == "dynamic_agent_client", "New registration")
+        expect(items.first { $0.name == "scope" }?.value == "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct", "Plan usage scopes")
+        let identityOnly = ChatGPTOAuth.authorizationURL(host: "urn:uuid:test", callback: redirect,
+            state: "state", nonce: "nonce", verifier: "verifier", account: nil, planUsage: false)
+        let identityScopes = URLComponents(url: identityOnly, resolvingAgainstBaseURL: false)!.queryItems!
+            .first { $0.name == "scope" }?.value
+        expect(identityScopes == "openid profile email", "Identity-only sign-in requests no plan usage permissions")
         let good = URL(string: redirect.absoluteString + "?code=code&state=state&client_id=oaiapp_test")!
         let values = try ChatGPTOAuth.callbackValues(good, expectedURL: redirect, state: "state", clientID: nil)
         expect(values.client == "oaiapp_test", "Issued client retained")
