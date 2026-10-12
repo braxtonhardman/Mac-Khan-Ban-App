@@ -375,6 +375,10 @@ struct ProjectEditor: View {
     let onSave: (UUID) -> Void
     @State private var name: String
     @State private var notes: String
+    @State private var selectedRepositoryID: Int64?
+    @State private var selectedRepositoryName: String?
+    @State private var repositories: [GitHubRepository] = []
+    @State private var repositoryMessage: String?
     @State private var error: String?
 
     init(project: Project?, initialArea: ProjectArea? = nil, onSave: @escaping (UUID) -> Void) {
@@ -383,6 +387,8 @@ struct ProjectEditor: View {
         self.onSave = onSave
         _name = State(initialValue: project?.name ?? "")
         _notes = State(initialValue: project?.notes ?? "")
+        _selectedRepositoryID = State(initialValue: project?.githubRepositoryID)
+        _selectedRepositoryName = State(initialValue: project?.githubRepositoryFullName)
     }
     var body: some View {
         WorkspaceItemEditor(kind: "Project", icon: "rectangle.3.group", isNew: project == nil, name: $name,
@@ -394,6 +400,31 @@ struct ProjectEditor: View {
                         .font(AppTypography.body)
                     Spacer(minLength: 12)
                     areaPicker
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("GitHub repository", systemImage: "chevron.left.forwardslash.chevron.right")
+                        .font(AppTypography.body)
+                    Menu {
+                        Button("None") {
+                            selectedRepositoryID = nil
+                            selectedRepositoryName = nil
+                        }
+                        ForEach(repositories) { repository in
+                            Button(repository.fullName) {
+                                selectedRepositoryID = repository.id
+                                selectedRepositoryName = repository.fullName
+                            }
+                        }
+                    } label: {
+                        Text(selectedRepositoryName ?? "Choose repository")
+                            .font(AppTypography.body)
+                    }
+                    .disabled(repositories.isEmpty && selectedRepositoryID == nil)
+                    if let repositoryMessage {
+                        Text(repositoryMessage)
+                            .font(AppTypography.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
@@ -416,6 +447,24 @@ struct ProjectEditor: View {
         #if os(iOS)
         .presentationDetents([.large])
         #endif
+        .task { await loadGitHubRepositories() }
+    }
+
+    private func loadGitHubRepositories() async {
+        do {
+            guard let token = try GitHubKeychain.read() else {
+                repositoryMessage = "Connect GitHub in Profile & Settings to choose a repository."
+                return
+            }
+            repositories = try await GitHubClient.repositories(token: token)
+            repositoryMessage = repositories.isEmpty ? "No repositories available to this token." : nil
+            if let id = selectedRepositoryID,
+               let current = repositories.first(where: { $0.id == id }) {
+                selectedRepositoryName = current.fullName
+            }
+        } catch {
+            repositoryMessage = error.localizedDescription
+        }
     }
 
     @ViewBuilder private var areaPicker: some View {
@@ -482,6 +531,8 @@ struct ProjectEditor: View {
             let item = try StoreWriter.saveItem(project, name: name, in: context,
                                                 create: { Project(name: "") }) { item in
                 item.notes = notes
+                item.githubRepositoryID = selectedRepositoryID
+                item.githubRepositoryFullName = selectedRepositoryName
                 item.area = areas.first { $0.id == areaID }
             }
             onSave(item.id)
@@ -704,6 +755,10 @@ struct ProjectBoardView: View {
                 .keyboardShortcut("n", modifiers: .command)
             Divider()
             Button("Edit Project", action: editProject)
+            if let name = project.githubRepositoryFullName,
+               let url = URL(string: "https://github.com/\(name)") {
+                Link("Open GitHub Repository", destination: url)
+            }
             Button("Delete Project…", role: .destructive, action: deleteProject)
         } label: { Label("Create Task or Manage Project", systemImage: "plus") }
             .labelStyle(.iconOnly)
