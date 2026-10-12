@@ -75,7 +75,7 @@ Calendar integration is an explicit export/update, not automatic two-way sync. D
 
 ## iCloud setup and behavior
 
-CloudKit requires an active Apple Developer Program membership. Both targets use bundle identifier `com.braxtonhardman.ProjectBoard` and container `iCloud.com.braxtonhardman.ProjectBoard`.
+CloudKit requires an active Apple Developer Program membership. The iPhone target uses `com.braxtonhardman.Tierin` to match the Tierin App Store Connect record. The Mac target uses `com.braxtonhardman.ProjectBoard`. Both use container `iCloud.com.braxtonhardman.ProjectBoard`.
 
 1. In Xcode, choose your existing team under Signing & Capabilities. Enable automatic signing and allow Xcode to register your development devices when needed.
 2. Verify that the same CloudKit container is available for both app targets. Cloud configurations include iCloud and push entitlements; iPhone also needs Remote notifications background mode.
@@ -91,7 +91,7 @@ Apple references: [SwiftData sync](https://developer.apple.com/documentation/swi
 
 ## Persistence and architecture
 
-The app retains its original bundle identifier and default local SwiftData store. Upgrades preserve existing V1 projects; projects without an area appear under Unassigned. Original checklist rows are converted into full child tasks at startup. Tests create stores with frozen earlier model definitions and reopen them using the current schema to verify migration.
+The Mac app retains its original bundle identifier and default local SwiftData store. Tierin's iPhone bundle ID creates a separate app sandbox from development installs using `com.braxtonhardman.ProjectBoard`; local-only data in those installs is not automatically moved. The existing CloudKit container is retained. Upgrades preserve existing V1 projects; projects without an area appear under Unassigned. Original checklist rows are converted into full child tasks at startup. Tests create stores with frozen earlier model definitions and reopen them using the current schema to verify migration.
 
 CloudKit-compatible models use default scalar values, optional relationships with inverses, and application-generated UUIDs without database uniqueness constraints. The default store is reused when switching to an iCloud build; existing local records become eligible for upload. Back up the app container before testing distribution builds or experimenting with iCloud accounts.
 
