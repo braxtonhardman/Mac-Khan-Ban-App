@@ -18,23 +18,25 @@ struct IOSWorkspaceSidebar<Content: View, CreationControl: View, ProfileControl:
             Button("New Project…", action: newProject)
                 .keyboardShortcut("n", modifiers: [.command, .shift])
         }
-        .navigationTitle("")
+        .navigationTitle("Workspace")
         .navigationBarTitleDisplayMode(.inline)
-        .listStyle(.insetGrouped)
-        .listSectionSpacing(14)
-        .contentMargins(.top, 24, for: .scrollContent)
+        .listStyle(.plain)
+        .listSectionSpacing(0)
+        .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 88, for: .scrollContent)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .principal) {
                 Text("Workspace")
-                    .font(AppTypography.boardTitle)
+                    .font(AppTypography.workspaceTitle)
                     .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
             }
             profileToolbarItem
         }
         .overlay(alignment: .bottomTrailing) {
             creationControl()
-                .padding(20)
+                .padding(.trailing, 12)
+                .padding(.bottom, 8)
         }
     }
 
@@ -129,22 +131,31 @@ struct IOSWorkspaceItemEditorShell<Fields: View>: View {
                 )
             }
         }
+        .modifier(DismissSheetOnOutsideTap())
     }
 }
 #endif
 
 #if os(macOS)
 struct MacInWindowModal<Content: View>: View {
+    let onDismiss: () -> Void
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.34)
-                .ignoresSafeArea()
+            Button(action: onDismiss) {
+                Color.black.opacity(0.34)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .ignoresSafeArea()
+            .accessibilityLabel("Dismiss popup")
 
             content()
                 .background(.regularMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .onTapGesture { } // Empty space inside the popup must not dismiss it.
                 .overlay {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(Color.primary.opacity(0.12), lineWidth: 0.75)
@@ -186,8 +197,9 @@ struct MacWorkspaceSidebar<Content: View, CreationControl: View>: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 12) {
                 Text("Workspace")
-                    .font(AppTypography.boardTitle)
+                    .font(AppTypography.workspaceTitle)
                     .lineLimit(1)
+                    .layoutPriority(1)
                 Spacer()
                 creationControl()
             }
@@ -195,6 +207,9 @@ struct MacWorkspaceSidebar<Content: View, CreationControl: View>: View {
             .padding(.top, isFullScreen ? 20 : 10)
             .padding(.bottom, 16)
         }
+        .appCardSurface(cornerRadius: 18)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -208,38 +223,48 @@ struct MacProjectHeader<Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(name)
-                    .font(AppTypography.boardTitle)
-                    .lineLimit(2)
-                    .textSelection(.enabled)
-                    .padding(.trailing, 136)
-
-                if !notes.isEmpty {
-                    Text(notes)
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack(alignment: .topTrailing) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(name)
+                        .font(AppTypography.boardTitle)
                         .lineLimit(2)
-                }
-                progressRow
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
 
-            actions()
-                .buttonStyle(.borderless)
-                .padding(.trailing, 68)
+                    if !notes.isEmpty {
+                        Text(notes)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.trailing, 136)
+                .frame(maxWidth: .infinity, minHeight: AppGlassButtonSize.large.dimension, alignment: .topLeading)
+
+                actions()
+                    .buttonStyle(.borderless)
+                    .padding(.trailing, 68)
+            }
+            progressRow
         }
         .padding(20)
     }
 
     private var progressRow: some View {
-        HStack {
-            ProgressView(value: progress).frame(width: 160)
+        HStack(spacing: 8) {
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+                .containerRelativeFrame(.horizontal) { width, _ in
+                    max(52, (width - 40) * 0.6)
+                }
             Text(progress, format: .percent.precision(.fractionLength(0)))
                 .font(AppTypography.itemTitle)
+                .fixedSize(horizontal: true, vertical: false)
             Text("· \(completedCount) of \(taskCount) tasks complete")
                 .foregroundStyle(.secondary)
-            Spacer()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
     }
 }
@@ -258,13 +283,15 @@ struct MacWorkspaceItemEditorShell<Fields: View>: View {
             ZStack {
                 Text(title).font(AppTypography.pageTitle)
                 HStack {
-                    Button(action: cancel) { Image(systemName: "xmark") }
-                        .appGlassButton(shape: .circle)
+                    AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Cancel", action: cancel)
                         .keyboardShortcut(.cancelAction)
-                        .accessibilityLabel("Cancel")
                     Spacer()
-                    Button(confirmationTitle, action: confirm)
-                        .appGlassButton(size: .small, shape: .rectangle, accent: true)
+                    AppGlassActionButton(
+                        symbol: .confirm,
+                        accessibilityLabel: confirmationTitle,
+                        accent: true,
+                        action: confirm
+                    )
                         .keyboardShortcut(.defaultAction)
                         .disabled(!canConfirm)
                 }
@@ -279,6 +306,98 @@ struct MacWorkspaceItemEditorShell<Fields: View>: View {
         }
         .background(.background)
         .modifier(EditorSizing(width: 540, height: height))
+    }
+}
+#endif
+
+
+#if os(iOS)
+import UIKit
+
+/// Keep native sheets and their swipe gesture, adding dismissal only to the exposed backdrop.
+struct DismissSheetOnOutsideTap: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    func body(content: Content) -> some View {
+        content.background {
+            OutsideSheetTapObserver(onDismiss: { dismiss() })
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+private struct OutsideSheetTapObserver: UIViewControllerRepresentable {
+    let onDismiss: () -> Void
+    func makeUIViewController(context: Context) -> ObserverController {
+        ObserverController(onDismiss: onDismiss)
+    }
+    func updateUIViewController(_ controller: ObserverController, context: Context) {
+        controller.onDismiss = onDismiss
+        controller.attachIfNeeded()
+    }
+    static func dismantleUIViewController(_ controller: ObserverController, coordinator: ()) {
+        controller.detach()
+    }
+
+    final class ObserverController: UIViewController, UIGestureRecognizerDelegate {
+        var onDismiss: () -> Void
+        private weak var sheetController: UIViewController?
+        private var backdropTap: UITapGestureRecognizer?
+
+        init(onDismiss: @escaping () -> Void) {
+            self.onDismiss = onDismiss
+            super.init(nibName: nil, bundle: nil)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func loadView() { view = UIView(); view.backgroundColor = .clear }
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            attachIfNeeded()
+        }
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            attachIfNeeded()
+        }
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            detach()
+        }
+        func attachIfNeeded() {
+            guard isViewLoaded, view.window != nil else { return }
+            var candidate: UIViewController? = self
+            while let current = candidate {
+                if current.presentingViewController != nil,
+                   let container = current.presentationController?.containerView {
+                    guard backdropTap?.view !== container else { return }
+                    detach()
+                    sheetController = current
+                    let tap = UITapGestureRecognizer(target: self, action: #selector(tappedBackdrop))
+                    tap.cancelsTouchesInView = false
+                    tap.delegate = self
+                    container.addGestureRecognizer(tap)
+                    backdropTap = tap
+                    return
+                }
+                candidate = current.parent
+            }
+        }
+        func detach() {
+            if let backdropTap { backdropTap.view?.removeGestureRecognizer(backdropTap) }
+            backdropTap = nil
+            sheetController = nil
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard let sheetController,
+                  sheetController.presentedViewController == nil,
+                  !sheetController.isBeingDismissed,
+                  let surface = sheetController.presentationController?.presentedView else { return false }
+            // Use the actual presented surface, not the SwiftUI content's frame. This excludes
+            // headers, padding, text fields, and the keyboard from the dismiss target.
+            return !surface.bounds.contains(touch.location(in: surface))
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
+        @objc private func tappedBackdrop() { onDismiss() }
     }
 }
 #endif

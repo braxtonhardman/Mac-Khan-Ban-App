@@ -4,7 +4,7 @@ The [iPhone build workflow](../.github/workflows/iphone-build.yml) compiles the 
 
 ## One-time TestFlight setup
 
-1. Confirm the App Store Connect app record uses bundle ID `com.braxtonhardman.ProjectBoard` and Apple team `92F54J4WUJ`.
+1. Confirm the App Store Connect app record uses bundle ID `com.braxtonhardman.Tierin` and Apple team `92F54J4WUJ`.
 2. In CloudKit Console, deploy the development schema for `iCloud.com.braxtonhardman.ProjectBoard` to Production before distributing an iCloud build. Verify the app with the production environment.
 3. Create a team App Store Connect API key with build upload and cloud-managed distribution signing access. Download the `.p8` file once.
 4. In this repository's GitHub Settings → Secrets and variables → Actions, add repository secrets:

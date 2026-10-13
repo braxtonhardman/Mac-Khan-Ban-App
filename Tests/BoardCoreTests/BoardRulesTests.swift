@@ -4,7 +4,7 @@ import XCTest
 final class BoardRulesTests: XCTestCase {
     func testProgressOnlyCountsDone() {
         XCTAssertEqual(BoardRules.progress(statuses: []), 0)
-        XCTAssertEqual(BoardRules.progress(statuses: [.backlog, .planned, .inProgress, .blocked, .done]), 0.2)
+        XCTAssertEqual(BoardRules.progress(statuses: [.backlog, .planned, .inProgress, .done]), 0.25)
         XCTAssertEqual(BoardRules.progress(statuses: [.done, .done]), 1)
     }
     func testTagsTrimAndDeduplicateWhilePreservingOrder() {

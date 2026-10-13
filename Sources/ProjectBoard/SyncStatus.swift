@@ -53,10 +53,8 @@ final class SyncStatus: ObservableObject {
 
 struct SyncStatusView: View {
     @EnvironmentObject private var status: SyncStatus
-    @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Storage & Sync", systemImage: "icloud").font(AppTypography.pageTitle)
             Text(status.account).font(AppTypography.itemTitle)
             Text(status.activity).foregroundStyle(.secondary)
             if let date = status.lastTransfer {
@@ -70,10 +68,8 @@ struct SyncStatusView: View {
                         .appGlassButton()
                 }
                 Spacer()
-                Button("Done") { dismiss() }
-                    .appGlassButton(accent: true)
-                    .keyboardShortcut(.defaultAction)
+
             }
-        }.padding(24).modifier(EditorSizing(width: 470))
+        }.padding(24)
     }
 }

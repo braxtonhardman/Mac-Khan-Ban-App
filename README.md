@@ -1,12 +1,12 @@
-# Mac-Khan-Ban-App
+# Tierin
 
-ProjectBoard is a native SwiftUI personal project tracker for Mac and iPhone. SwiftData saves your work locally. Optional iCloud builds sync projects, areas, tasks, and profile settings through your private CloudKit database. There is no custom backend, app account, subscription, Docker service, or third-party dependency.
+Tierin is a native SwiftUI personal project tracker for Mac and iPhone. SwiftData saves your work locally. Optional iCloud builds sync projects, areas, tasks, and profile settings through your private CloudKit database. There is no custom backend, Docker service, or third-party dependency. The free plan allows 3 projects and 1 area; an optional monthly Tierin Unlimited subscription removes those limits. Tasks and subtasks are unlimited on both plans.
 
 ## Run
 
-Requires macOS 14+ or iOS 17+, and Xcode 15+. Development validation uses Xcode 27.
+Requires macOS 14+ or iOS 17+, and Xcode 27+ to build the native Icon Composer assets.
 
-Open `ProjectBoard.xcodeproj` and choose a scheme:
+Open `ProjectBoard.xcodeproj` and choose a scheme. All schemes produce **Tierin.app**; the existing project and scheme names are retained for development:
 
 | Scheme | Destination | Storage |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ Local Mac build without a developer account:
 
 ```sh
 xcodebuild -project ProjectBoard.xcodeproj -scheme ProjectBoard -configuration Debug -derivedDataPath DerivedData CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
-open DerivedData/Build/Products/Debug/ProjectBoard.app
+open DerivedData/Build/Products/Debug/Tierin.app
 ```
 
 Local iPhone simulator build:
@@ -44,7 +44,7 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 - Select a project, then use **… → New Task** (Command-N on Mac) or a column's plus button.
 - Click/tap a card to edit title, description, status, priority, due date, tags, and subtasks.
 - Subtasks are full child tasks with their own status, priority, description, due date, and tags. Open a parent task and choose **Add Subtask** to reuse the task editor. Select a subtask row to edit it, or use its circular completion control for a quick status change.
-- Drag cards between Backlog, Planned, In Progress, Blocked, and Done. The card context menu also provides **Move To**.
+- Drag cards between Backlog, Planned, In Progress, and Done. The card context menu also provides **Move To**.
 - On iPhone, a column picker shows one column at a time; use the task editor or long-press **Move To** to change status.
 - Right-click/long-press a task to delete it. Project deletion also deletes its tasks; both require confirmation.
 - Project progress is completed top-level tasks divided by all top-level tasks. Subtask progress appears on the parent card and inside its editor; completing a child does not automatically complete its parent.
@@ -54,8 +54,8 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 
 The top-right profile button opens shared board preferences:
 
-- The settings landing page groups profile and storage status, future account integrations, and general preferences. GitHub and OpenAI/ChatGPT appear as clearly marked, inactive connection placeholders until authentication is implemented.
-- Rename all five stages. Names apply across projects and task status menus; the fifth stage still counts as completed work.
+- The settings landing page groups profile and storage status, future account integrations, and general preferences. ChatGPT offers an optional device-local account connection; see [ChatGPT setup](docs/chatgpt-profile-integration.md). GitHub remains a placeholder until its integration is merged.
+- Rename all four stages. Names apply across projects and task status menus; the fourth stage still counts as completed work. Existing Blocked tasks appear in In Progress, and custom names for the remaining stages are preserved.
 - Choose red, orange, yellow, green, teal, blue, purple, or pink as the app accent.
 - Choose System, Light, or Dark appearance. Light and Dark override the device setting; System follows each device. The choice syncs with your profile.
 - Create reusable tags in Profile → Tags. Task editors use searchable chips: type to find an existing tag or choose Create to add one. Tags already used on tasks appear automatically; capitalization and surrounding spaces do not create duplicates. Remove a chip to unassign it from that task.
@@ -65,17 +65,20 @@ The top-right profile button opens shared board preferences:
 
 ## Apple Calendar deadlines
 
-1. Set a task's due date and save it.
-2. Right-click/long-press its card and choose **Add or Update Deadline in Calendar…**.
-3. Choose Calendar, grant Calendar access if requested, select a writable calendar, and click **Add Event**.
+1. Open **Profile → Apple Calendar** on Mac or iPhone.
+2. Choose **Connect Apple Calendar** and grant full Calendar access.
+3. Select the Calendar account (choose iCloud for cross-device sharing), then choose **Create Tierin Calendar**. Tierin creates its own named calendar, or reuses an existing Tierin calendar in that account, and enables sync.
+4. Save a due date on a task or subtask. Tierin creates an all-day event and updates its title, description, project name, and date when those change.
 
-This creates an all-day deadline event. Use the same action on the same device to update it after editing a task. Full Calendar access is required to choose a calendar and update an existing event; access is requested only by this explicit action.
+Sync runs while Tierin is open and resumes when it returns to the foreground. Removing a due date or deleting a linked task removes its event. Moving a task or subtask to Done removes its deadline event; reopening it with a due date restores the event. Connecting the dedicated Tierin calendar moves previously linked events into that destination. Unrelated events stay in their original calendars. **Sync Now** retries immediately; permission and calendar errors appear in the same settings page.
 
-Calendar integration is an explicit export/update, not automatic two-way sync. Deleting/completing a task or clearing its due date does not remove its Calendar event. Calendar edits do not change tasks. EventKit identifiers are stored locally per device; adding the same deadline from another device can create another event. Choose one device for managing each task's Calendar link. The selected calendar may itself sync through your Apple account.
+This is one-way sync from Tierin to Apple Calendar. Editing events in Calendar does not update tasks. Calendar access and the destination choice are local to each device; choose the same iCloud calendar on Mac and iPhone for a shared destination. Task links include a shared event identifier and task URL so another device can reuse an existing event. Concurrent offline creation can temporarily produce duplicates, which Tierin reconciles when both copies become visible.
+
+Disconnect pauses sync on this device and leaves existing events in Calendar. Calendar settings take effect immediately. Only events linked to Tierin tasks are managed; unrelated and recurring events are left alone.
 
 ## iCloud setup and behavior
 
-CloudKit requires an active Apple Developer Program membership. The iPhone target uses `com.braxtonhardman.Tierin` to match the Tierin App Store Connect record. The Mac target uses `com.braxtonhardman.ProjectBoard`. Both use container `iCloud.com.braxtonhardman.ProjectBoard`.
+CloudKit requires an active Apple Developer Program membership. Both targets use bundle identifier `com.braxtonhardman.Tierin` and container `iCloud.com.braxtonhardman.ProjectBoard`.
 
 1. In Xcode, choose your existing team under Signing & Capabilities. Enable automatic signing and allow Xcode to register your development devices when needed.
 2. Verify that the same CloudKit container is available for both app targets. Cloud configurations include iCloud and push entitlements; iPhone also needs Remote notifications background mode.
@@ -91,7 +94,7 @@ Apple references: [SwiftData sync](https://developer.apple.com/documentation/swi
 
 ## Persistence and architecture
 
-The Mac app retains its original bundle identifier and default local SwiftData store. Tierin's iPhone bundle ID creates a separate app sandbox from development installs using `com.braxtonhardman.ProjectBoard`; local-only data in those installs is not automatically moved. The existing CloudKit container is retained. Upgrades preserve existing V1 projects; projects without an area appear under Unassigned. Original checklist rows are converted into full child tasks at startup. Tests create stores with frozen earlier model definitions and reopen them using the current schema to verify migration.
+Tierin now uses bundle identifier `com.braxtonhardman.Tierin`. The original CloudKit container `iCloud.com.braxtonhardman.ProjectBoard` and model module names remain unchanged to preserve stored data. New calendar links use `tierin://task/<UUID>`. Earlier `projectboard://` links still open tasks, and automatic Calendar sync updates linked events to the Tierin scheme in place. The new bundle identifier creates a separate installation and sandbox: local-only data and sign-in preferences are not automatically transferred from the old app. Keep the old installation until its data has synced and you have verified the new installation. Sign in again with Apple and use the same iCloud account and CloudKit environment to retrieve cloud data. Upgrades preserve existing V1 projects; projects without an area appear under Unassigned. Original checklist rows are converted into full child tasks at startup. Tests create stores with frozen earlier model definitions and reopen them using the current schema to verify migration.
 
 CloudKit-compatible models use default scalar values, optional relationships with inverses, and application-generated UUIDs without database uniqueness constraints. The default store is reused when switching to an iCloud build; existing local records become eligible for upload. Back up the app container before testing distribution builds or experimenting with iCloud accounts.
 
@@ -143,3 +146,53 @@ Xcode compiles the core directly into both apps; Swift Package Manager builds it
 | Caption | Dates, tags on cards, checklists, help text | 11 pt regular |
 
 `AppSection` applies the section heading style to grouped forms. Icon-only controls have separate symbol sizes.
+
+## App branding
+
+The app uses the stacked project-board symbol in `Design/WorkspaceMark.svg`.
+Light appearance is blue on white; dark appearance is white on blue. The shared
+`WorkspaceMark` view follows the app's System/Light/Dark preference on welcome and
+sign-in screens. Installed icons follow the device's icon appearance settings.
+
+`WorkspaceIcon.icon` is the Icon Composer source included in both Xcode targets.
+It contains explicit default and dark variants; Xcode also generates compatibility
+icons for supported older systems. `Assets.xcassets/AppIcon.appiconset` contains
+standalone raster exports for tooling that does not use Icon Composer.
+
+After changing the source vector, regenerate its SwiftUI geometry, native icon
+package, and PNG/SVG exports on a Mac with Xcode:
+
+```sh
+python3 Design/generate_brand_assets.py
+```
+
+The app's interactive accent color remains a separate profile preference.
+
+
+## Tierin Unlimited monthly subscription
+
+- Free: 3 projects and 1 named area across the whole workspace. Unassigned is a virtual group and does not count as an area.
+- Unlimited: unlimited projects and areas for the duration of the monthly subscription. Tasks, subtasks, editing, viewing, deleting, calendar export, and iCloud sync are not paywalled.
+- Creating a fourth project or second area opens the paywall. The shared persistence writer rechecks counts immediately before insertion, including records that arrived while an editor was open.
+- Existing data over the limits remains accessible after an upgrade, expiry, refund, or restore failure. No projects or areas are deleted or hidden. Deleting items frees quota.
+- Counts use the local SwiftData replica. Two offline devices may temporarily exceed the limits before iCloud merges their changes. The merged records remain accessible; further creation is blocked. A globally atomic quota would require a coordinating backend.
+- Ownership uses verified StoreKit 2 entitlements, not an editable SwiftData profile flag. Current entitlements are checked on launch, foreground, transaction updates, and every minute while the root view is alive. StoreKit maintains its local transaction cache for offline access.
+- Cancelling renewal keeps access until the paid period ends; expired/refunded access reverts to Free creation limits. Billing grace periods follow StoreKit current entitlements.
+- **Profile → Plan** opens Upgrade, Restore Purchases, and Manage Subscription. The subscription belongs to the App Store account, which can differ from the account used for Sign in with Apple or iCloud.
+
+### App Store Connect setup required before real purchases
+
+1. Add Mac and iOS to the same app record/universal purchase using the existing bundle ID. Use one subscription group named **Tierin Unlimited**.
+2. Add an **auto-renewable subscription** with product ID `com.braxtonhardman.Tierin.unlimited.monthly`, duration **1 month**, and display name **Tierin Unlimited Monthly**.
+3. Choose the supported US storefront price closest to **US$2/month**. The local test configuration uses **$1.99/month** as a test price only; it does not configure App Store Connect. The live paywall always uses Apple's localized `Product.displayPrice`. Sales tax may be additional; the app does not promise $2 including tax.
+4. Complete the paid-app agreement, banking/tax setup, product availability, localization, review screenshot, and review submission. Configure both platforms under the same subscription to restore on Mac and iPhone.
+5. Publish a Privacy Policy URL and supply it in App Store Connect and the app before submission. The app currently contains a readable in-app privacy disclosure and links Apple's standard Terms of Use; a public privacy-policy URL is still required for distribution.
+6. Test on sandbox accounts/TestFlight: new subscription, cancellation, renewal, expiration, billing retry/grace period, refund/revocation, reinstall/restore, and restoration on the other platform.
+
+Real product setup and App Review approval are external to this repository. If Apple returns no matching monthly subscription, the paywall shows Purchase unavailable and offers retry/restore; no fake price or local flag grants access.
+
+### Local testing
+
+Run **Tierin StoreKit Mac** or **Tierin StoreKit iPhone** from Xcode to use `Tierin.storekit`. These are dedicated local-payment test schemes; the normal schemes keep StoreKit configuration off. Local StoreKit transactions are simulated and do not charge an account or transfer to another device. Use a disposable simulator/test workspace when testing limits.
+
+Use Xcode's **Debug → StoreKit → Manage Transactions** to test subscription renewal, expiration, refund, and interrupted/pending purchases. Automated `swift test` coverage includes quota boundaries, stale editor counts, deletion freeing capacity, editing over-limit data, success, cancellation, pending approval, errors, missing products, restore, and entitlement updates. The state tests use an injected StoreKit boundary; they do not replace sandbox purchase validation.

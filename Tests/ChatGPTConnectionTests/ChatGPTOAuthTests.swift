@@ -35,6 +35,25 @@ func b64(_ data: Data) -> String {
         rejects { _ = try ChatGPTOAuth.callbackValues(good, expectedURL: redirect, state: "state", clientID: "oaiapp_other") }
         rejects { _ = try ChatGPTOAuth.callbackValues(URL(string: "http://localhost:1455/auth/callback?code=c&state=state&client_id=oaiapp_test")!, expectedURL: redirect, state: "state", clientID: nil) }
         rejects { _ = try ChatGPTOAuth.callbackValues(URL(string: "http://127.0.0.1:1456/auth/callback?code=c&state=state&client_id=oaiapp_test")!, expectedURL: redirect, state: "state", clientID: nil) }
+        rejects { _ = try ChatGPTOAuth.callbackValues(URL(string: good.absoluteString + "#fragment")!, expectedURL: redirect, state: "state", clientID: nil) }
+        rejects { _ = try ChatGPTOAuth.callbackValues(URL(string: good.absoluteString.replacingOccurrences(of: "127.0.0.1", with: "user@127.0.0.1"))!, expectedURL: redirect, state: "state", clientID: nil) }
+        var saved = ChatGPTSavedConnections()
+        func account(_ client: String) -> ChatGPTAccount {
+            ChatGPTAccount(subject: "user-" + client, email: "same@example.com", clientID: client,
+                accessToken: "test", refreshToken: nil, idToken: "test", scopes: [], expiresAt: Date())
+        }
+        saved.connect(account("first"))
+        saved.account = nil
+        saved.connect(account("second"))
+        saved.connect(account("second"))
+        let restored = try JSONDecoder().decode(ChatGPTSavedConnections.self, from: JSONEncoder().encode(saved))
+        expect(restored.registrations.count == 2, "Separate registrations retained without duplicate clients")
+        expect(restored.account?.clientID == "second", "Atomic record restores active account")
+        let returning = ChatGPTOAuth.authorizationURL(host: "urn:uuid:test", callback: redirect,
+            state: "s", nonce: "n", verifier: "v", account: nil, registration: restored.registrations[0], planUsage: false)
+        let returningItems = URLComponents(url: returning, resolvingAgainstBaseURL: false)!.queryItems!
+        expect(returningItems.first { $0.name == "client_id" }?.value == "first", "Sign-out retains registration for reauthorization")
+        expect(!returningItems.contains { $0.name == "id_token_hint" || $0.name == "agent_name_hint" }, "No old token or new registration hint after sign-out")
         expect(String(data: ChatGPTOAuth.form(["code": "a+b&= c"]), encoding: .utf8) == "code=a%2Bb%26%3D%20c", "Form escaping")
 
         // Generate a local RSA fixture. No network, browser or real account is used.
@@ -69,7 +88,7 @@ func b64(_ data: Data) -> String {
         let signed = try token()
         let identity = try ChatGPTOAuth.verifyIdentity(signed, jwks: jwks, client: "oaiapp_test", nonce: "nonce")
         expect(identity.subject == "user", "Signed identity")
-        let invalidClaims: [[String: Any]] = [["iss": "https://attacker.invalid"], ["aud": "other"], ["nonce": "other"], ["exp": 1.0], ["sub": ""], ["aud": ["oaiapp_test", "other"]], ["nbf": Date().timeIntervalSince1970 + 600]]
+        let invalidClaims: [[String: Any]] = [["azp": "other"], ["iss": "https://attacker.invalid"], ["aud": "other"], ["nonce": "other"], ["exp": 1.0], ["sub": ""], ["aud": ["oaiapp_test", "other"]], ["nbf": Date().timeIntervalSince1970 + 600]]
         for overrides in invalidClaims {
             rejects { _ = try ChatGPTOAuth.verifyIdentity(token(overrides), jwks: jwks, client: "oaiapp_test", nonce: "nonce") }
         }
@@ -89,6 +108,13 @@ func b64(_ data: Data) -> String {
         let returned = try await received
         expect(returned == valid, "Callback returned intact")
         listener.cancel()
+        let early = ChatGPTCallbackListener()
+        let earlyURL = try await early.start(state: "early")
+        let earlyCallback = URL(string: earlyURL.absoluteString + "?code=c&state=early&client_id=oaiapp_test")!
+        _ = try await URLSession.shared.data(from: earlyCallback)
+        let earlyResult = try await early.wait()
+        expect(earlyResult == earlyCallback, "Fast callback is buffered until wait begins")
+        early.cancel()
         let cancelled = ChatGPTCallbackListener()
         _ = try await cancelled.start(state: "cancelled")
         cancelled.cancel()

@@ -14,6 +14,7 @@ struct ProjectBoardApp: App {
             let openedContainer = try ModelContainer(for: schema, configurations: [configuration])
             openedContainer.mainContext.autosaveEnabled = false
             try LegacyChecklistMigrator.run(in: openedContainer.mainContext)
+            try RetiredStageMigrator.run(in: openedContainer.mainContext)
             container = openedContainer
             startupError = nil
         } catch {
@@ -22,7 +23,7 @@ struct ProjectBoardApp: App {
         }
     }
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Tierin") {
             if let container {
                 AppRootView().modelContainer(container).environmentObject(SyncStatus.shared)
 

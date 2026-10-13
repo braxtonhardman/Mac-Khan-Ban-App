@@ -1,14 +1,17 @@
 import Foundation
 
 public enum TaskStatus: String, CaseIterable, Codable, Identifiable {
-    case backlog, planned, inProgress, blocked, done
+    case backlog, planned, inProgress, done
+    /// Older local stores and CloudKit imports can still contain the retired stage.
+    public init(storedValue: String) {
+        self = storedValue == "blocked" ? .inProgress : (Self(rawValue: storedValue) ?? .backlog)
+    }
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .backlog: return "Backlog"
         case .planned: return "Planned"
         case .inProgress: return "In Progress"
-        case .blocked: return "Blocked"
         case .done: return "Done"
         }
     }
@@ -17,7 +20,6 @@ public enum TaskStatus: String, CaseIterable, Codable, Identifiable {
         case .backlog: return "tray"
         case .planned: return "calendar"
         case .inProgress: return "circle.lefthalf.filled"
-        case .blocked: return "exclamationmark.circle"
         case .done: return "checkmark.circle.fill"
         }
     }
@@ -56,6 +58,13 @@ public enum BoardRules {
 
 /// Shared normalization keeps tags typed on different devices from differing only by case.
 public enum TagRules {
+    public static let maximumNameLength = 24
+    public static func isValidNewName(_ value: String) -> Bool {
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !name.isEmpty && name.count <= maximumNameLength
+            && name.rangeOfCharacter(from: .newlines) == nil
+    }
+
     public static func normalized(_ tags: [String]) -> [String] {
         var seen = Set<String>()
         return tags.compactMap {

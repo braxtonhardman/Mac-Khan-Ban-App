@@ -9,7 +9,8 @@ enum ChatGPTConnectionError: LocalizedError {
     }
 }
 
-struct ChatGPTRegistration: Codable {
+struct ChatGPTRegistration: Codable, Identifiable {
+    var id: String { clientID }
     let subject: String
     let email: String?
     let clientID: String
@@ -25,6 +26,18 @@ struct ChatGPTAccount: Codable {
     let scopes: [String]
     let expiresAt: Date
     var allowsPlanUsage: Bool { scopes.contains("chatgpt.tokens.use.direct") }
+}
+
+/// The active session and saved account registrations are written atomically.
+struct ChatGPTSavedConnections: Codable {
+    var registrations: [ChatGPTRegistration] = []
+    var account: ChatGPTAccount?
+
+    mutating func connect(_ account: ChatGPTAccount) {
+        registrations.removeAll { $0.clientID == account.clientID }
+        registrations.append(ChatGPTRegistration(subject: account.subject, email: account.email, clientID: account.clientID))
+        self.account = account
+    }
 }
 
 // Tokens remain in this app's device-local Keychain, never SwiftData or iCloud.
@@ -102,6 +115,7 @@ enum ChatGPTOAuth {
     static func callbackValues(_ url: URL, expectedURL: URL, state: String, clientID: String?) throws -> (code: String, client: String) {
         guard url.scheme == expectedURL.scheme, url.host == expectedURL.host,
               url.port == expectedURL.port, url.path == expectedURL.path,
+              url.user == nil, url.password == nil, url.fragment == nil,
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else {
             throw ChatGPTConnectionError.message("The sign-in callback was invalid.")
         }
@@ -205,6 +219,7 @@ enum ChatGPTOAuth {
         let audience = (claims["aud"] as? [String]) ?? (claims["aud"] as? String).map { [$0] } ?? []
         guard claims["iss"] as? String == issuer, audience.contains(client),
               audience.count <= 1 || claims["azp"] as? String == client,
+              claims["azp"] == nil || claims["azp"] as? String == client,
               claims["nonce"] as? String == nonce,
               let expires = claims["exp"] as? Double, expires > Date().timeIntervalSince1970,
               let subject = claims["sub"] as? String, !subject.isEmpty else {
