@@ -1,10 +1,17 @@
 import SwiftUI
 
+/// Shared project identity on Mac and iPhone, matching the website's layered motif.
+/// Keep area folders and task/status symbols separate from project identity.
+enum AppSymbols {
+    static let project = "square.3.layers.3d"
+}
+
 /// Semantic system styles keep hierarchy consistent and support iPhone Dynamic Type.
 /// Default Mac sizes: board 22, page 17, section/context 15, item/body 13, supporting 12, caption 11.
 enum AppTypography {
     static let boardTitle: Font = .title.bold()
     static let pageTitle: Font = .title2.bold()
+    static let profileInitial: Font = .title2.weight(.semibold)
     static let sectionTitle: Font = .title3.weight(.semibold)
     static let contextTitle: Font = .title3
     static let itemTitle: Font = .headline
@@ -14,10 +21,13 @@ enum AppTypography {
     static let metadataEmphasis: Font = .caption.weight(.medium)
 
     #if os(iOS)
+    static let workspaceTitle: Font = .title3.bold()
     static let sidebarAreaTitle: Font = .title2.weight(.semibold)
+    static let sidebarAreaCount: Font = .body.weight(.medium)
     static let sidebarAreaIcon: Font = .title3.weight(.semibold)
     static let sidebarDisclosureIcon: Font = .callout.weight(.semibold)
     #else
+    static let workspaceTitle: Font = .system(size: 24, weight: .bold)
     static let sidebarAreaTitle: Font = sectionTitle
     static let sidebarAreaIcon: Font = itemTitle
     static let sidebarDisclosureIcon: Font = smallIcon
@@ -53,6 +63,45 @@ struct AppSection<Content: View>: View {
                 .foregroundStyle(headingColor)
                 .textCase(nil)
         }
+    }
+}
+
+/// The filled surface used by profile sections and task cards.
+/// It follows the active System, Light, or Dark appearance without a separate border.
+private struct AppCardSurface: ViewModifier {
+    let cornerRadius: CGFloat
+
+    private var background: Color {
+        #if os(iOS)
+        Color(uiColor: .secondarySystemGroupedBackground)
+        #else
+        Color(nsColor: .controlBackgroundColor)
+        #endif
+    }
+
+    private var adaptiveLift: Color {
+        #if os(iOS)
+        Color.clear
+        #else
+        Color.primary.opacity(0.04)
+        #endif
+    }
+
+    func body(content: Content) -> some View {
+        content.background {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(background)
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(adaptiveLift)
+                }
+        }
+    }
+}
+
+extension View {
+    func appCardSurface(cornerRadius: CGFloat = 18) -> some View {
+        modifier(AppCardSurface(cornerRadius: cornerRadius))
     }
 }
 
@@ -249,6 +298,49 @@ extension View {
     }
 }
 
+enum AppGlassActionSymbol {
+    case back
+    case cancel
+    case confirm
+
+    var systemName: String {
+        switch self {
+        case .back: "chevron.left"
+        case .cancel: "xmark"
+        case .confirm: "checkmark"
+        }
+    }
+}
+
+struct AppActionGlyph: View {
+    let symbol: AppGlassActionSymbol
+    var size: AppGlassButtonSize = .medium
+
+    var body: some View {
+        Image(systemName: symbol.systemName)
+            .font(size.iconFont)
+            .frame(width: size.iconDimension, height: size.iconDimension)
+    }
+}
+
+/// A standard back, X, or checkmark action whose glyph and surface use the same size preset.
+/// Keeping both values here prevents individual menus from overriding the symbol size.
+struct AppGlassActionButton: View {
+    let symbol: AppGlassActionSymbol
+    let accessibilityLabel: String
+    var size: AppGlassButtonSize = .medium
+    var accent = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            AppActionGlyph(symbol: symbol, size: size)
+        }
+        .appGlassButton(size: size, shape: .circle, accent: accent)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
 struct EditorToolbarActions: ToolbarContent {
     let confirmationTitle: String
     let canConfirm: Bool
@@ -274,14 +366,17 @@ struct EditorToolbarActions: ToolbarContent {
     }
 
     private var cancelButton: some View {
-        Button(action: cancel) { Image(systemName: "xmark") }
-            .appGlassButton(shape: .circle)
-            .accessibilityLabel("Cancel")
+        AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Cancel", action: cancel)
     }
 
+    @ViewBuilder
     private var confirmationButton: some View {
-        Button(confirmationTitle, action: confirm)
-            .appGlassButton(size: .small, shape: .rectangle, accent: true)
+        AppGlassActionButton(
+            symbol: .confirm,
+            accessibilityLabel: confirmationTitle,
+            accent: true,
+            action: confirm
+        )
             .disabled(!canConfirm)
     }
 }
@@ -311,5 +406,23 @@ struct WorkspaceEditorCard<Content: View>: View {
                     .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
             }
         }
+    }
+}
+
+/// Shared identity label for workspace controls and profile cards on both platforms.
+struct ProfileInitial: View {
+    let displayName: String?
+
+    private var initial: String {
+        guard let character = displayName?.first(where: { $0.isLetter || $0.isNumber }) else { return "?" }
+        return String(String(character).uppercased().prefix(1))
+    }
+
+    var body: some View {
+        Text(initial)
+            .font(AppTypography.profileInitial)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .accessibilityHidden(true)
     }
 }

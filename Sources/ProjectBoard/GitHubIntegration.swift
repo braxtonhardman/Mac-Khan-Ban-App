@@ -8,6 +8,13 @@ struct GitHubRepository: Decodable, Identifiable, Hashable, Sendable {
     let fullName: String
     let isPrivate: Bool
 
+    static func webURL(fullName: String) -> URL? {
+        let parts = fullName.split(separator: "/", omittingEmptySubsequences: false)
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._")
+        guard parts.count == 2, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && $0.unicodeScalars.allSatisfy(allowed.contains) }) else { return nil }
+        return URL(string: "https://github.com/" + fullName)
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case fullName = "full_name"
@@ -17,9 +24,13 @@ struct GitHubRepository: Decodable, Identifiable, Hashable, Sendable {
 
 enum GitHubConnectionError: LocalizedError {
     case message(String)
+    case unauthorized
 
     var errorDescription: String? {
-        switch self { case .message(let message): return message }
+        switch self {
+        case .message(let message): return message
+        case .unauthorized: return "GitHub rejected this token. Replace it with a valid, unexpired token."
+        }
     }
 }
 
@@ -69,32 +80,64 @@ enum GitHubKeychain {
     }
 }
 
+private final class GitHubRedirectPolicy: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        // Do not forward a personal token to a redirected endpoint.
+        completionHandler(nil)
+    }
+}
+
 enum GitHubClient {
-    static func repositories(token: String) async throws -> [GitHubRepository] {
-        var result: [GitHubRepository] = []
-        // Keep the picker bounded while still covering larger personal accounts.
+    private static let session = URLSession(configuration: .ephemeral, delegate: GitHubRedirectPolicy(), delegateQueue: nil)
+
+    struct User: Decodable { let login: String }
+    static func username(token: String, session: URLSession? = nil) async throws -> String {
+        let (data, _) = try await request(path: "user", token: token, session: session)
+        return try JSONDecoder().decode(User.self, from: data).login
+    }
+
+    static func repositories(token: String, session: URLSession? = nil) async throws -> [GitHubRepository] {
+        var result: [Int64: GitHubRepository] = [:]
         for page in 1...10 {
-            let url = URL(string: "https://api.github.com/user/repos?per_page=100&page=\(page)&sort=updated")!
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 30
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let response = response as? HTTPURLResponse else {
-                throw GitHubConnectionError.message("GitHub didn’t respond. Try again.")
-            }
-            if response.statusCode == 401 {
-                throw GitHubConnectionError.message("GitHub rejected this token. Check that it is valid and has not expired.")
-            }
-            guard response.statusCode == 200, data.count < 2_000_000 else {
-                throw GitHubConnectionError.message("Couldn’t load repositories from GitHub. Try again later.")
-            }
+            try Task.checkCancellation()
+            let (data, response) = try await request(path: "user/repos?per_page=100&page=\(page)&sort=full_name", token: token, session: session)
             let batch = try JSONDecoder().decode([GitHubRepository].self, from: data)
-            result.append(contentsOf: batch)
-            if batch.count < 100 { break }
+            for repository in batch { result[repository.id] = repository }
+            let more = response.value(forHTTPHeaderField: "Link")?.contains("rel=\"next\"") == true
+            if !more { return result.values.sorted { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending } }
         }
-        return result
+        throw GitHubConnectionError.message("This token exposes more than 1,000 repositories. Select fewer repositories in its GitHub settings, then refresh.")
+    }
+
+    private static func request(path: String, token: String, session: URLSession?) async throws -> (Data, HTTPURLResponse) {
+        guard !token.isEmpty, !token.contains(where: { $0.isWhitespace || $0.isNewline }) else {
+            throw GitHubConnectionError.unauthorized
+        }
+        var request = URLRequest(url: URL(string: "https://api.github.com/" + path)!)
+        request.timeoutInterval = 30
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        request.setValue("Tierin", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await (session ?? self.session).data(for: request)
+        try Task.checkCancellation()
+        guard let response = response as? HTTPURLResponse else {
+            throw GitHubConnectionError.message("GitHub didn’t respond. Try again.")
+        }
+        if response.statusCode == 401 { throw GitHubConnectionError.unauthorized }
+        if response.statusCode == 429 || (response.statusCode == 403 && (response.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0" || response.value(forHTTPHeaderField: "Retry-After") != nil)) {
+            throw GitHubConnectionError.message("GitHub’s request limit has been reached. Wait before refreshing again.")
+        }
+        if response.statusCode == 403 {
+            throw GitHubConnectionError.message("GitHub denied access. Check the token’s selected repositories, metadata permission, and organization approval.")
+        }
+        guard response.statusCode == 200, data.count < 2_000_000 else {
+            throw GitHubConnectionError.message("Couldn’t load GitHub data. Try again later.")
+        }
+        return (data, response)
     }
 }
 
@@ -103,6 +146,8 @@ final class GitHubConnection {
     private(set) var isConnected = false
     private(set) var isBusy = false
     private(set) var repositoryCount: Int?
+    private(set) var username: String?
+    private(set) var needsReconnect = false
     var error: String?
 
     func load() {
@@ -116,12 +161,37 @@ final class GitHubConnection {
         error = nil
         defer { isBusy = false }
         do {
-            let repositories = try await GitHubClient.repositories(token: token.trimmingCharacters(in: .whitespacesAndNewlines))
-            try GitHubKeychain.write(token.trimmingCharacters(in: .whitespacesAndNewlines))
+            let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            let username = try await GitHubClient.username(token: token)
+            let repositories = try await GitHubClient.repositories(token: token)
+            try Task.checkCancellation()
+            try GitHubKeychain.write(token)
+            self.username = username
+            needsReconnect = false
             repositoryCount = repositories.count
             isConnected = true
         } catch {
             self.error = (error as? GitHubConnectionError)?.localizedDescription ?? "Couldn’t connect GitHub. Try again."
+        }
+    }
+
+    func refresh() async {
+        guard !isBusy else { return }
+        isBusy = true; error = nil
+        defer { isBusy = false }
+        do {
+            guard let token = try GitHubKeychain.read() else { isConnected = false; return }
+            let username = try await GitHubClient.username(token: token)
+            let repositories = try await GitHubClient.repositories(token: token)
+            try Task.checkCancellation()
+            self.username = username
+            repositoryCount = repositories.count
+            needsReconnect = false
+            isConnected = true
+        } catch is CancellationError { }
+        catch {
+            if case GitHubConnectionError.unauthorized = error { needsReconnect = true }
+            self.error = (error as? GitHubConnectionError)?.localizedDescription ?? "Couldn’t refresh GitHub. Check your connection and try again."
         }
     }
 
@@ -130,37 +200,42 @@ final class GitHubConnection {
             try GitHubKeychain.remove()
             isConnected = false
             repositoryCount = nil
+            username = nil
+            needsReconnect = false
             error = nil
         } catch { self.error = error.localizedDescription }
     }
 }
 
+// Standalone network tests compile the production client without the app UI.
+#if !INTEGRATION_TESTING
 struct GitHubProfileView: View {
-    @Environment(\.dismiss) private var dismiss
     @Bindable var connection: GitHubConnection
     @State private var token = ""
 
     var body: some View {
-        NavigationStack {
-            Form {
+        Form {
                 AppSection("GitHub account") {
                     if connection.isConnected {
-                        Label("Connected", systemImage: "checkmark.circle")
+                        Label(connection.username.map { "Connected as " + $0 } ?? "Connection saved on this device", systemImage: "checkmark.circle")
                             .font(AppTypography.body)
                         if let count = connection.repositoryCount {
                             Text("\(count) repositories available to link")
                                 .font(AppTypography.supporting).foregroundStyle(.secondary)
                         }
+                        Button("Refresh connection") { Task { await connection.refresh() } }
+                            .appGlassButton()
                         Button("Disconnect", role: .destructive) { connection.disconnect() }
                             .appGlassButton()
-                    } else {
+                    }
+                    if !connection.isConnected || connection.needsReconnect {
                         Text("Connect GitHub to select repositories for your projects.")
                             .font(AppTypography.body)
                         SecureField("Fine-grained access token", text: $token)
                         Button("Connect GitHub") {
                             Task {
                                 await connection.connect(token: token)
-                                if connection.isConnected { token = "" }
+                                if connection.error == nil { token = "" }
                             }
                         }
                         .appGlassButton(accent: true)
@@ -177,10 +252,12 @@ struct GitHubProfileView: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle("GitHub")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        .task {
+            connection.load()
+            if connection.isConnected { await connection.refresh() }
         }
-        .modifier(EditorSizing(width: 500, height: 520))
-        .onAppear { connection.load() }
+        .onDisappear { token = "" }
     }
 }
+
+#endif

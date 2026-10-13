@@ -1,0 +1,45 @@
+{
+  "identifier": "fa74b87d-b505-4fbd-b743-de84ca69efb5",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "tierin-unlimited",
+      "localizations": [],
+      "name": "Tierin Unlimited",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "1.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "tierin-unlimited-monthly",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Unlimited projects and areas on Mac and iPhone. Renews monthly.",
+              "displayName": "Tierin Unlimited Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.braxtonhardman.Tierin.unlimited.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Tierin Unlimited Monthly",
+          "subscriptionGroupID": "tierin-unlimited",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}

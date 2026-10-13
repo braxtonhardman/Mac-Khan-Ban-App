@@ -10,9 +10,13 @@ import BoardCore
 #endif
 
 struct ContentView: View {
+    @EnvironmentObject private var purchases: PurchaseStore
+    @State private var showingUnlimited = false
+    @State private var limitReason: WorkspaceResource?
     var isFullScreen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var context
+    @Query private var profiles: [AppProfile]
     @Query(sort: \Project.createdAt) private var projects: [Project]
     @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
     @AppStorage("collapsedAreas") private var collapsedAreas = ""
@@ -35,6 +39,13 @@ struct ContentView: View {
 
     private var selected: Project? { projects.first { $0.id == selection } }
     private var hasUnassignedProjects: Bool { projects.contains { $0.area == nil } }
+    private var areaToggleAnimation: Animation {
+        #if os(iOS)
+        .easeInOut(duration: 0.36)
+        #else
+        .easeInOut(duration: 0.2)
+        #endif
+    }
     private var navigationColumnVisibility: Binding<NavigationSplitViewVisibility> {
         #if os(macOS)
         Binding(get: { .all }, set: { _ in })
@@ -45,7 +56,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: navigationColumnVisibility) {
             workspaceSidebar
-                .navigationSplitViewColumnWidth(min: 230, ideal: 230)
+                .navigationSplitViewColumnWidth(min: 250, ideal: 250)
 
         } detail: {
             Group {
@@ -54,12 +65,15 @@ struct ContentView: View {
                         .id(selected.id)
                 } else {
                     ContentUnavailableView {
-                        Label("A little structure for your next idea", systemImage: "rectangle.split.3x1")
+                        Label("A little structure for your next idea", systemImage: AppSymbols.project)
                     } description: {
                         Text("Create a project, capture tasks, and move them toward done.")
                     } actions: {
-                        Button("Create Project") { projectEditor = .init(project: nil) }
-                            .appGlassButton(shape: .rectangle, accent: true)
+                        Button { beginProject() } label: {
+                            Image(systemName: "plus")
+                        }
+                            .appGlassButton(size: .medium, shape: .circle, accent: true)
+                            .accessibilityLabel("New Project")
                     }
                 }
             }
@@ -82,11 +96,33 @@ struct ContentView: View {
             if selection == nil { selection = projects.first?.id }
             #endif
         }
+        #if os(iOS)
         .sheet(item: $projectEditor) { request in
             ProjectEditor(project: request.project, initialArea: request.area) { selection = $0 }
         }
+        #else
+        .overlay {
+            if let request = projectEditor {
+                MacInWindowModal(onDismiss: { self.projectEditor = nil }) {
+                    ProjectEditor(
+                        project: request.project,
+                        initialArea: request.area,
+                        onClose: { self.projectEditor = nil }
+                    ) { selection = $0 }
+                }
+            } else if let request = areaEditor {
+                MacInWindowModal(onDismiss: { self.areaEditor = nil }) {
+                    AreaEditor(area: request.area, onClose: { self.areaEditor = nil })
+                }
+            } else if showingProfile {
+                MacInWindowModal(onDismiss: { self.showingProfile = false }) {
+                    ProfileSettingsView(onClose: { self.showingProfile = false })
+                }
+            }
+        }
+        #endif
         .onOpenURL { url in
-            guard url.scheme == "projectboard", url.host == "task", let id = UUID(uuidString: url.lastPathComponent),
+            guard let id = TaskLink.taskID(from: url),
                   let task = projects.flatMap(\.taskList).first(where: { $0.id == id }) else { return }
             selection = task.project?.id
             linkedTask = task
@@ -100,7 +136,7 @@ struct ContentView: View {
         #else
         .overlay {
             if let linkedTask, let project = linkedTask.project {
-                MacInWindowModal {
+                MacInWindowModal(onDismiss: { self.linkedTask = nil }) {
                     TaskDetailView(
                         project: project,
                         task: linkedTask,
@@ -110,8 +146,11 @@ struct ContentView: View {
             }
         }
         #endif
+        #if os(iOS)
         .sheet(isPresented: $showingProfile) { ProfileSettingsView() }
         .sheet(item: $areaEditor) { AreaEditor(area: $0.area) }
+        #endif
+        .unlimitedPaywall(isPresented: $showingUnlimited, reason: limitReason)
         .confirmationDialog("Delete \(removingArea?.name ?? "area")?", isPresented: Binding(get: { removingArea != nil }, set: { if !$0 { removingArea = nil } })) {
             Button("Delete Area", role: .destructive) {
                 guard let area = removingArea else { return }
@@ -138,21 +177,42 @@ struct ContentView: View {
         } message: { Text(error ?? "") }
     }
 
+    private func canCreate(_ resource: WorkspaceResource) -> Bool {
+        do {
+            try StoreWriter.requireCreationAccess(resource, in: context, hasUnlimited: purchases.hasUnlimited)
+            return true
+        } catch let limit as WorkspaceLimitError {
+            limitReason = limit.resource
+            showingUnlimited = true
+        } catch { self.error = error.localizedDescription }
+        return false
+    }
+
+    private func beginProject(in area: ProjectArea? = nil) {
+        guard canCreate(.project) else { return }
+        projectEditor = .init(project: nil, area: area)
+    }
+
+    private func beginArea() {
+        guard canCreate(.area) else { return }
+        areaEditor = .init(area: nil)
+    }
+
     @ViewBuilder
     private var workspaceSidebar: some View {
         #if os(macOS)
         MacWorkspaceSidebar(
             isFullScreen: isFullScreen,
-            newArea: { areaEditor = .init(area: nil) },
-            newProject: { projectEditor = .init(project: nil) },
+            newArea: { beginArea() },
+            newProject: { beginProject() },
             content: { workspaceGroups },
             creationControl: { creationMenu }
         )
         #else
         IOSWorkspaceSidebar(
             selection: $selection,
-            newArea: { areaEditor = .init(area: nil) },
-            newProject: { projectEditor = .init(project: nil) },
+            newArea: { beginArea() },
+            newProject: { beginProject() },
             content: { workspaceGroups },
             creationControl: { creationMenu },
             profileControl: { profileButton }
@@ -168,9 +228,8 @@ struct ContentView: View {
 
     private var profileButton: some View {
         Button { showingProfile = true } label: {
-            Label("Profile & Settings", systemImage: "person.crop.circle")
+            ProfileInitial(displayName: AppProfile.current(in: profiles)?.displayName)
         }
-        .labelStyle(.iconOnly)
         .appGlassButton(size: .large, shape: .circle)
         .help("Profile & Settings")
         .accessibilityLabel("Profile & Settings")
@@ -178,11 +237,15 @@ struct ContentView: View {
 
     private var creationMenu: some View {
         Menu {
-            Button("New Project…") { projectEditor = .init(project: nil) }
+            Button("New Project…") { beginProject() }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
-            Button("New Area…") { areaEditor = .init(area: nil) }
+            Button("New Area…") { beginArea() }
         } label: {
+            #if os(iOS)
+            Label("Create Project or Area", systemImage: "plus")
+            #else
             Label("Create Project or Area", systemImage: "plus.rectangle.on.folder")
+            #endif
         }
         .labelStyle(.iconOnly)
         #if os(iOS)
@@ -210,18 +273,23 @@ struct ContentView: View {
     private func areaContents(_ area: ProjectArea?) -> some View {
         let key = area?.id.uuidString ?? "unassigned"
         let children = projects.filter { $0.area?.id == area?.id }
-        areaHeader(area?.name ?? "Unassigned", key: key)
+        areaHeader(area?.name ?? "Unassigned", key: key, projectCount: children.count)
             .contextMenu {
                 if let area {
-                    Button("New Project in Area…") { projectEditor = .init(project: nil, area: area) }
+                    Button("New Project in Area…") { beginProject(in: area) }
                     Button("Edit Area…", systemImage: "pencil") { areaEditor = .init(area: area) }
                     Button("Delete Area…", systemImage: "trash", role: .destructive) { removingArea = area }
                     Divider()
-                    Button("New Area…") { areaEditor = .init(area: nil) }
+                    Button("New Area…") { beginArea() }
                 }
-            }
+        }
         if !isCollapsed(key) {
-            ForEach(children) { projectRow($0) }
+            ForEach(Array(children.enumerated()), id: \.element.id) { index, project in
+                projectRow(project, showsSeparator: index < children.count - 1)
+                    #if os(iOS)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    #endif
+            }
             if children.isEmpty && area != nil {
                 Text("No projects yet").font(AppTypography.caption).foregroundStyle(.secondary)
                     .padding(.leading, projectIndent)
@@ -229,10 +297,8 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
-                    .listRowBackground(Color.clear)
-                    #else
-                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                     #endif
+                    .listRowBackground(Color.clear)
                     .listRowInsets(.init(top: 2, leading: 16, bottom: 2, trailing: 12))
                     .listRowSeparator(.hidden)
             }
@@ -245,9 +311,9 @@ struct ContentView: View {
         if keys.contains(key) { keys.remove(key) } else { keys.insert(key) }
         value = keys.sorted().joined(separator: ",")
     }
-    private func areaHeader(_ name: String, key: String) -> some View {
+    private func areaHeader(_ name: String, key: String, projectCount: Int) -> some View {
         Button {
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : areaToggleAnimation) {
                 toggle(key, in: &collapsedAreas)
             }
         } label: {
@@ -261,10 +327,35 @@ struct ContentView: View {
                     .foregroundStyle(.tint)
                     .frame(width: 20)
                     .accessibilityHidden(true)
+                #if os(iOS)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(name)
+                        .font(AppTypography.sidebarAreaTitle)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if isCollapsed(key) {
+                        Text("· \(projectCount) \(projectCount == 1 ? "project" : "projects")")
+                            .font(AppTypography.sidebarAreaCount)
+                            .foregroundStyle(.secondary)
+                            .transition(.opacity)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                }
+                .layoutPriority(1)
+                #else
                 Text(name)
                     .font(AppTypography.sidebarAreaTitle)
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
+                #endif
                 Spacer(minLength: 0)
+                #if os(macOS)
+                Text(projectCount, format: .number)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize()
+                #endif
             }
             .padding(.vertical, 5)
             #if os(macOS)
@@ -274,16 +365,15 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .listRowInsets(.init(top: 2, leading: 14, bottom: 2, trailing: 12))
-        #if os(iOS)
-        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
-        #else
         .listRowBackground(Color.clear)
-        #endif
         .listRowSeparator(.hidden)
         .accessibilityLabel("\(isCollapsed(key) ? "Expand" : "Collapse") \(name)")
+        #if os(macOS)
+        .accessibilityValue("\(projectCount) \(projectCount == 1 ? "project" : "projects")")
+        #endif
     }
     @ViewBuilder
-    private func projectRow(_ project: Project) -> some View {
+    private func projectRow(_ project: Project, showsSeparator: Bool) -> some View {
         Group {
             #if os(iOS)
             NavigationLink(value: project.id) {
@@ -306,12 +396,18 @@ struct ContentView: View {
         #else
         .listRowInsets(.init(top: 1, leading: 8, bottom: 1, trailing: 8))
         #endif
-        #if os(iOS)
-        .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
-        #else
         .listRowBackground(Color.clear)
-        #endif
         .listRowSeparator(.hidden)
+        .overlay(alignment: .bottom) {
+            if showsSeparator {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(height: 0.5)
+                    .padding(.leading, projectIndent + 28)
+                    .padding(.trailing, 12)
+                    .allowsHitTesting(false)
+            }
+        }
         .accessibilityAddTraits(selection == project.id ? .isSelected : [])
         .contextMenu {
             Button("Edit Project…") { projectEditor = .init(project: project) }
@@ -321,14 +417,14 @@ struct ContentView: View {
                     Button(area.name) { project.area = area; saveChanges() }
                 }
             }
-            Button("New Area…") { areaEditor = .init(area: nil) }
+            Button("New Area…") { beginArea() }
             Button("Delete Project…", role: .destructive) { deleting = project }
         }
     }
 
     private func projectRowLabel(_ project: Project) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "rectangle.3.group")
+            Image(systemName: AppSymbols.project)
                 .font(AppTypography.smallIcon)
                 .foregroundStyle(selection == project.id ? Color.accentColor : Color.secondary)
                 .frame(width: 18)
@@ -367,11 +463,14 @@ private struct ProjectEditRequest: Identifiable {
 }
 
 struct ProjectEditor: View {
+    @EnvironmentObject private var purchases: PurchaseStore
+    @State private var showingUnlimited = false
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     let project: Project?
     @Query(sort: \ProjectArea.createdAt) private var areas: [ProjectArea]
     @State private var areaID: UUID?
+    let onClose: (() -> Void)?
     let onSave: (UUID) -> Void
     @State private var name: String
     @State private var notes: String
@@ -379,11 +478,19 @@ struct ProjectEditor: View {
     @State private var selectedRepositoryName: String?
     @State private var repositories: [GitHubRepository] = []
     @State private var repositoryMessage: String?
+    @State private var loadingRepositories = false
+    @State private var repositorySearch = ""
     @State private var error: String?
 
-    init(project: Project?, initialArea: ProjectArea? = nil, onSave: @escaping (UUID) -> Void) {
+    init(
+        project: Project?,
+        initialArea: ProjectArea? = nil,
+        onClose: (() -> Void)? = nil,
+        onSave: @escaping (UUID) -> Void
+    ) {
         self.project = project
         _areaID = State(initialValue: project?.area?.id ?? initialArea?.id)
+        self.onClose = onClose
         self.onSave = onSave
         _name = State(initialValue: project?.name ?? "")
         _notes = State(initialValue: project?.notes ?? "")
@@ -391,9 +498,9 @@ struct ProjectEditor: View {
         _selectedRepositoryName = State(initialValue: project?.githubRepositoryFullName)
     }
     var body: some View {
-        WorkspaceItemEditor(kind: "Project", icon: "rectangle.3.group", isNew: project == nil, name: $name,
+        WorkspaceItemEditor(kind: "Project", icon: AppSymbols.project, isNew: project == nil, name: $name,
                             guidance: "Give the project a clear home and enough context to get started.",
-                            error: error, save: save) {
+                            error: error, onClose: onClose, save: save) {
             WorkspaceEditorCard("Project details") {
                 HStack(spacing: 12) {
                     Label("Area", systemImage: "folder")
@@ -405,12 +512,17 @@ struct ProjectEditor: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("GitHub repository", systemImage: "chevron.left.forwardslash.chevron.right")
                         .font(AppTypography.body)
+                    if repositories.count > 10 {
+                        TextField("Search repositories", text: $repositorySearch)
+                            .font(AppTypography.body)
+                    }
+                    HStack {
                     Menu {
                         Button("None") {
                             selectedRepositoryID = nil
                             selectedRepositoryName = nil
                         }
-                        ForEach(repositories) { repository in
+                        ForEach(repositories.filter { repositorySearch.isEmpty || $0.fullName.localizedCaseInsensitiveContains(repositorySearch) }) { repository in
                             Button(repository.fullName) {
                                 selectedRepositoryID = repository.id
                                 selectedRepositoryName = repository.fullName
@@ -420,7 +532,16 @@ struct ProjectEditor: View {
                         Text(selectedRepositoryName ?? "Choose repository")
                             .font(AppTypography.body)
                     }
-                    .disabled(repositories.isEmpty && selectedRepositoryID == nil)
+                    .appGlassButton(size: .medium, shape: .rectangle)
+                    .disabled(loadingRepositories || (repositories.isEmpty && selectedRepositoryID == nil))
+                    if loadingRepositories { ProgressView().controlSize(.small) }
+                    Button { Task { await loadGitHubRepositories() } } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .appGlassButton(size: .small, shape: .circle)
+                    .accessibilityLabel("Refresh repositories")
+                    .disabled(loadingRepositories)
+                    }
                     if let repositoryMessage {
                         Text(repositoryMessage)
                             .font(AppTypography.caption).foregroundStyle(.secondary)
@@ -444,6 +565,7 @@ struct ProjectEditor: View {
                 }
             }
         }
+        .unlimitedPaywall(isPresented: $showingUnlimited, reason: .project, inlineOnMac: true)
         #if os(iOS)
         .presentationDetents([.large])
         #endif
@@ -451,9 +573,14 @@ struct ProjectEditor: View {
     }
 
     private func loadGitHubRepositories() async {
+        guard !loadingRepositories else { return }
+        loadingRepositories = true
+        repositoryMessage = nil
+        defer { loadingRepositories = false }
         do {
             guard let token = try GitHubKeychain.read() else {
-                repositoryMessage = "Connect GitHub in Profile & Settings to choose a repository."
+                repositories = []
+                repositoryMessage = "Connect GitHub in Profile & Settings to choose a repository. Existing project links are kept."
                 return
             }
             repositories = try await GitHubClient.repositories(token: token)
@@ -461,9 +588,13 @@ struct ProjectEditor: View {
             if let id = selectedRepositoryID,
                let current = repositories.first(where: { $0.id == id }) {
                 selectedRepositoryName = current.fullName
+            } else if selectedRepositoryID != nil {
+                repositoryMessage = "The linked repository is not available to this token. Its link is kept; you can choose None to unlink it."
             }
-        } catch {
-            repositoryMessage = error.localizedDescription
+        } catch is CancellationError { }
+        catch {
+            repositories = []
+            repositoryMessage = (error as? GitHubConnectionError)?.localizedDescription ?? "Couldn’t load repositories. Check your connection and refresh."
         }
     }
 
@@ -529,6 +660,7 @@ struct ProjectEditor: View {
     private func save() {
         do {
             let item = try StoreWriter.saveItem(project, name: name, in: context,
+                                                hasUnlimitedAccess: purchases.hasUnlimited,
                                                 create: { Project(name: "") }) { item in
                 item.notes = notes
                 item.githubRepositoryID = selectedRepositoryID
@@ -536,8 +668,14 @@ struct ProjectEditor: View {
                 item.area = areas.first { $0.id == areaID }
             }
             onSave(item.id)
-            dismiss()
+            close()
+        } catch is WorkspaceLimitError {
+            showingUnlimited = true
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
     }
 
 }
@@ -628,9 +766,6 @@ struct ProjectBoardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             projectHeader
-            #if os(macOS)
-            Divider()
-            #endif
             GeometryReader { geometry in
                 let statuses = TaskStatus.allCases
                 let spacing: CGFloat = 14
@@ -646,18 +781,37 @@ struct ProjectBoardView: View {
                     : max(180, (availableWidth - gaps) / CGFloat(statuses.count))
                 let columnHeight = max(0, geometry.size.height)
 
-                ScrollView(.horizontal) {
-                    boardColumns(
+                #if os(iOS)
+                if compactLayout {
+                    ScrollView(.horizontal) {
+                        compactBoardPages(
+                            statuses: statuses,
+                            pageWidth: geometry.size.width,
+                            columnWidth: columnWidth,
+                            columnHeight: columnHeight
+                        )
+                        .scrollTargetLayout()
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.paging)
+                } else {
+                    boardScrollView(
                         statuses: statuses,
                         spacing: spacing,
                         columnWidth: columnWidth,
                         columnHeight: columnHeight,
                         horizontalPadding: horizontalPadding
                     )
-                    .scrollTargetLayout()
                 }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
+                #else
+                boardScrollView(
+                    statuses: statuses,
+                    spacing: spacing,
+                    columnWidth: columnWidth,
+                    columnHeight: columnHeight,
+                    horizontalPadding: horizontalPadding
+                )
+                #endif
             }
         }
         #if os(macOS)
@@ -667,16 +821,20 @@ struct ProjectBoardView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
         #if os(iOS)
+        .sheet(item: $calendarTask) { CalendarDeadlineSheet(task: $0) }
         .sheet(item: $editor) {
             TaskEditor(project: project, task: $0.task, initialStatus: $0.status, parentTask: $0.parentTask)
         }
         .sheet(item: $viewingTask) { TaskDetailView(project: project, task: $0, onClose: nil) }
         #else
         .overlay {
-            if let viewingTask {
-                MacInWindowModal {
+            if let calendarTask {
+                MacInWindowModal(onDismiss: { self.calendarTask = nil }) {
+                    CalendarDeadlineSheet(task: calendarTask, onClose: { self.calendarTask = nil })
+                }
+            } else if let viewingTask {
+                MacInWindowModal(onDismiss: { self.viewingTask = nil }) {
                     TaskDetailView(
                         project: project,
                         task: viewingTask,
@@ -684,7 +842,7 @@ struct ProjectBoardView: View {
                     )
                 }
             } else if let editor {
-                MacInWindowModal {
+                MacInWindowModal(onDismiss: { self.editor = nil }) {
                     TaskEditor(
                         project: project,
                         task: editor.task,
@@ -705,6 +863,27 @@ struct ProjectBoardView: View {
         .alert("Couldn’t save changes", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
+    }
+
+    private func boardScrollView(
+        statuses: [TaskStatus],
+        spacing: CGFloat,
+        columnWidth: CGFloat,
+        columnHeight: CGFloat,
+        horizontalPadding: CGFloat
+    ) -> some View {
+        ScrollView(.horizontal) {
+            boardColumns(
+                statuses: statuses,
+                spacing: spacing,
+                columnWidth: columnWidth,
+                columnHeight: columnHeight,
+                horizontalPadding: horizontalPadding
+            )
+            .scrollTargetLayout()
+        }
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
     }
 
     @ViewBuilder
@@ -749,6 +928,22 @@ struct ProjectBoardView: View {
         .padding(.horizontal, horizontalPadding)
     }
 
+    #if os(iOS)
+    private func compactBoardPages(
+        statuses: [TaskStatus],
+        pageWidth: CGFloat,
+        columnWidth: CGFloat,
+        columnHeight: CGFloat
+    ) -> some View {
+        LazyHStack(alignment: .top, spacing: 0) {
+            ForEach(statuses) { status in
+                column(status, width: columnWidth, height: columnHeight)
+                    .frame(width: pageWidth, alignment: .top)
+            }
+        }
+    }
+    #endif
+
     private var projectOptions: some View {
         Menu {
             Button("New Task") { editor = .init() }
@@ -756,7 +951,7 @@ struct ProjectBoardView: View {
             Divider()
             Button("Edit Project", action: editProject)
             if let name = project.githubRepositoryFullName,
-               let url = URL(string: "https://github.com/\(name)") {
+               let url = GitHubRepository.webURL(fullName: name) {
                 Link("Open GitHub Repository", destination: url)
             }
             Button("Delete Project…", role: .destructive, action: deleteProject)
@@ -782,44 +977,95 @@ struct ProjectBoardView: View {
                 Text("\(tasks.count)").foregroundStyle(.secondary)
                 Spacer()
             }.frame(minHeight: 36, alignment: .top)
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(tasks) { task in
-                        Button { viewingTask = task } label: { TaskCard(task: task) }
-                            .buttonStyle(.plain)
-                            .draggable(task.id.uuidString)
-                            .contextMenu {
-                                Button("Edit Task") { editor = .init(task: task) }
-                                Button("Add or Update Deadline in Calendar…") { calendarTask = task }
-                                    .disabled(task.dueDate == nil)
-                                Menu("Move To") {
-                                    ForEach(TaskStatus.allCases) { target in
-                                        Button(appearance.title(for: target)) { move(task, to: target) }.disabled(task.status == target)
+            Group {
+                if tasks.isEmpty {
+                    #if os(iOS)
+                    VStack(spacing: 6) {
+                        Text("No tasks yet")
+                            .font(AppTypography.itemTitle)
+                            .foregroundStyle(.secondary)
+                        Text("Create a task or drop one here.")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(20)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 150)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.secondary.opacity(0.24), lineWidth: 1)
+                    }
+                    #else
+                    VStack(spacing: 6) {
+                        Text("No tasks yet")
+                            .font(AppTypography.itemTitle)
+                            .foregroundStyle(.secondary)
+                        Text("Create a task or drop one here.")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(20)
+                    #endif
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            ForEach(tasks) { task in
+                                Button { viewingTask = task } label: { TaskCard(task: task) }
+                                    .buttonStyle(.plain)
+                                    .draggable(task.id.uuidString)
+                                    .contextMenu {
+                                        Button("Edit Task") { editor = .init(task: task) }
+                                        Button("Apple Calendar Settings…") { calendarTask = task }
+                                            .disabled(task.dueDate == nil)
+                                        Menu("Move To") {
+                                            ForEach(TaskStatus.allCases) { target in
+                                                Button(appearance.title(for: target)) { move(task, to: target) }.disabled(task.status == target)
+                                            }
+                                        }
+                                        Button("Delete Task…", role: .destructive) { deleting = task }
                                     }
-                                }
-                                Button("Delete Task…", role: .destructive) { deleting = task }
                             }
+                        }
+                        #if os(macOS)
+                        .padding(.horizontal, 2)
+                        #endif
+                        .padding(.bottom, 24)
                     }
-                    if tasks.isEmpty {
-                        Text("Drop a task here").font(AppTypography.caption).foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity).padding(.vertical, 28)
-                    }
+                    .scrollIndicators(.hidden)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(maxHeight: .infinity)
                 }
-                #if os(macOS)
-                .padding(.horizontal, 2)
-                #endif
-                .padding(.bottom, 24)
             }
-            .scrollIndicators(.hidden)
-            .scrollBounceBehavior(.basedOnSize)
+            #if os(macOS)
+            .frame(maxHeight: .infinity)
+            #endif
         }
         #if os(iOS)
         .padding(.vertical, 12)
         #else
         .padding(12)
         #endif
-        .frame(width: width, height: height)
+        .frame(width: width, height: height, alignment: .topLeading)
+        .overlay {
+            #if os(macOS)
+            if tasks.isEmpty {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.24), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            #endif
+        }
         .contentShape(Rectangle())
+        #if os(macOS)
+        .contextMenu {
+            Button("Add Task…", systemImage: "plus") {
+                editor = .init(status: status)
+            }
+        }
+        #endif
         .dropDestination(for: String.self) { values, _ in
             let ids = Set(values.compactMap(UUID.init(uuidString:)))
             let matches = project.topLevelTasks.filter { ids.contains($0.id) }
@@ -845,33 +1091,35 @@ struct TaskCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(task.title).font(AppTypography.itemTitle).fixedSize(horizontal: false, vertical: true)
             if !task.details.isEmpty { Text(task.details).font(AppTypography.supporting).foregroundStyle(.secondary).lineLimit(2) }
+            if !task.tags.isEmpty {
+                TaskCardTags(tags: task.tags)
+            }
             Text(task.priority.title).font(AppTypography.metadataEmphasis)
                 .foregroundStyle(task.priority.rawValue >= 2 ? Color.orange : Color.secondary)
-            if !task.subtaskList.isEmpty {
-                Label("\(task.subtaskList.filter { $0.status == .done }.count)/\(task.subtaskList.count) subtasks", systemImage: "list.bullet.indent")
-                    .font(AppTypography.caption).foregroundStyle(.secondary)
-            }
-            if !task.tags.isEmpty || task.dueDate != nil {
-                HStack(alignment: .bottom, spacing: 8) {
-                    if !task.tags.isEmpty {
-                        Text(task.tags.map { "#\($0)" }.joined(separator: "  "))
-                            .font(AppTypography.caption)
-                            .foregroundStyle(.tint)
-                            .lineLimit(2)
+            if !task.subtaskList.isEmpty || task.dueDate != nil {
+                HStack(spacing: 8) {
+                    if !task.subtaskList.isEmpty {
+                        Label("\(task.subtaskList.filter { $0.status == .done }.count)/\(task.subtaskList.count) subtasks", systemImage: "list.bullet.indent")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                     Spacer(minLength: 0)
                     if let date = task.dueDate {
-                        Label(date.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
-                            .font(AppTypography.caption)
+                        let sameYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+                        let dateLabel = sameYear
+                            ? date.formatted(.dateTime.month(.abbreviated).day())
+                            : date.formatted(date: .abbreviated, time: .omitted)
+                        Label(dateLabel, systemImage: "calendar")
                             .foregroundStyle(date < Calendar.current.startOfDay(for: Date()) && task.status != .done ? Color.red : Color.secondary)
-                            .fixedSize()
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
+                .font(AppTypography.caption)
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+        .appCardSurface(cornerRadius: 10)
         .accessibilityElement(children: .combine)
     }
 }
@@ -882,15 +1130,19 @@ private struct AreaEditRequest: Identifiable {
 }
 
 private struct AreaEditor: View {
+    @EnvironmentObject private var purchases: PurchaseStore
+    @State private var showingUnlimited = false
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query private var areas: [ProjectArea]
     let area: ProjectArea?
+    let onClose: (() -> Void)?
     @State private var name: String
     @State private var error: String?
 
-    init(area: ProjectArea?) {
+    init(area: ProjectArea?, onClose: (() -> Void)? = nil) {
         self.area = area
+        self.onClose = onClose
         _name = State(initialValue: area?.name ?? "")
     }
     private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -902,9 +1154,10 @@ private struct AreaEditor: View {
         WorkspaceItemEditor(kind: "Area", icon: "folder", isNew: area == nil, name: $name,
                             guidance: "Group related projects, such as Work, Personal, or Learning.",
                             validation: duplicate ? "Choose a different area name." : nil,
-                            error: error, save: save) {
+                            error: error, onClose: onClose, save: save) {
             EmptyView()
         }
+        .unlimitedPaywall(isPresented: $showingUnlimited, reason: .area, inlineOnMac: true)
         #if os(iOS)
         .presentationDetents([.medium])
         #endif
@@ -914,9 +1167,16 @@ private struct AreaEditor: View {
         guard !duplicate else { return }
         do {
             _ = try StoreWriter.saveItem(area, name: name, in: context,
+                                        hasUnlimitedAccess: purchases.hasUnlimited,
                                         create: { ProjectArea(name: "") })
-            dismiss()
+            close()
+        } catch is WorkspaceLimitError {
+            showingUnlimited = true
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
     }
 
 }
@@ -939,6 +1199,7 @@ struct EditorSizing: ViewModifier {
         content.font(AppTypography.body).frame(width: width, height: height)
         #else
         content.font(AppTypography.body).frame(maxWidth: .infinity)
+            .modifier(DismissSheetOnOutsideTap())
         #endif
     }
 }
@@ -953,6 +1214,7 @@ private struct WorkspaceItemEditor<Content: View>: View {
     var guidance: String? = nil
     var validation: String? = nil
     let error: String?
+    var onClose: (() -> Void)? = nil
     let save: () -> Void
     @ViewBuilder var content: () -> Content
     @FocusState private var nameIsFocused: Bool
@@ -1014,7 +1276,7 @@ private struct WorkspaceItemEditor<Content: View>: View {
                             name = ""
                             nameIsFocused = true
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            AppActionGlyph(symbol: .cancel, size: .small)
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
@@ -1044,7 +1306,7 @@ private struct WorkspaceItemEditor<Content: View>: View {
             title: title,
             confirmationTitle: isNew ? "Create" : "Save",
             canConfirm: canSave,
-            cancel: { dismiss() },
+            cancel: close,
             confirm: save,
             fields: { editorFields }
         )
@@ -1054,7 +1316,7 @@ private struct WorkspaceItemEditor<Content: View>: View {
             confirmationTitle: isNew ? "Create" : "Save",
             canConfirm: canSave,
             height: kind == "Area" ? 440 : 650,
-            cancel: { dismiss() },
+            cancel: close,
             confirm: save,
             fields: { editorFields }
         )
@@ -1063,5 +1325,9 @@ private struct WorkspaceItemEditor<Content: View>: View {
         .task {
             if isNew { nameIsFocused = true }
         }
+    }
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
     }
 }
