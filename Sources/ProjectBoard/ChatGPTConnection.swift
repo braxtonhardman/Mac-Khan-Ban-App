@@ -44,7 +44,7 @@ final class ChatGPTConnection {
             try ChatGPTKeychain.remove("registration")
         } catch { self.error = "Couldn’t load the saved ChatGPT connection." }
     }
-    func connect(planUsage: Bool) async {
+    func connect(planUsage: Bool, browserBundleID: String? = nil) async {
         guard !isBusy else { return }
         isBusy = true; error = nil
         let attempt = UUID(); attemptID = attempt
@@ -61,7 +61,19 @@ final class ChatGPTConnection {
             #if os(iOS)
             browserURL = authorization
             #else
-            guard NSWorkspace.shared.open(authorization) else { throw ChatGPTConnectionError.message("Couldn’t open your browser.") }
+            if let browserBundleID {
+                guard let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: browserBundleID) else {
+                    throw ChatGPTConnectionError.message("Google Chrome isn’t installed. Choose your default browser or install Chrome and try again.")
+                }
+                do {
+                    _ = try await NSWorkspace.shared.open([authorization], withApplicationAt: application, configuration: NSWorkspace.OpenConfiguration())
+                } catch {
+                    throw ChatGPTConnectionError.message("Couldn’t open Google Chrome. Choose your default browser or try again.")
+                }
+            } else {
+                guard NSWorkspace.shared.open(authorization) else { throw ChatGPTConnectionError.message("Couldn’t open your browser.") }
+            }
+            guard attemptID == attempt else { throw CancellationError() }
             #endif
             let url = try await listener.wait()
             awaitingBrowser = false; browserURL = nil
@@ -105,14 +117,21 @@ final class ChatGPTConnection {
 struct ChatGPTProfileView: View {
     @Bindable var connection: ChatGPTConnection
     @State private var allowPlanUsage = false
+    @State private var browserBundleID = ""
     var body: some View {
         Form {
                 AppSection("ChatGPT account") {
+                    #if os(macOS)
+                    Picker("Sign-in browser", selection: $browserBundleID) {
+                        Text("Default browser").tag("")
+                        Text("Google Chrome").tag("com.google.Chrome")
+                    }
+                    #endif
                     if let account = connection.account {
                         Label(account.email ?? "ChatGPT account", systemImage: "checkmark.circle")
                         Text(account.allowsPlanUsage ? "ChatGPT plan usage is enabled." : "Connected. ChatGPT plan usage is not enabled.")
                             .font(AppTypography.supporting).foregroundStyle(.secondary)
-                        Button("Reconnect") { Task { await connection.connect(planUsage: allowPlanUsage) } }
+                        Button("Reconnect") { Task { await connection.connect(planUsage: allowPlanUsage, browserBundleID: browserBundleID.isEmpty ? nil : browserBundleID) } }
                             .appGlassButton()
                         Button("Disconnect", role: .destructive) { Task { await connection.disconnect() } }
                             .appGlassButton()
@@ -127,7 +146,7 @@ struct ChatGPTProfileView: View {
                                 }
                             }
                         }
-                        Button("Continue with ChatGPT") { Task { await connection.connect(planUsage: allowPlanUsage) } }
+                        Button("Continue with ChatGPT") { Task { await connection.connect(planUsage: allowPlanUsage, browserBundleID: browserBundleID.isEmpty ? nil : browserBundleID) } }
                             .appGlassButton(accent: true)
                     }
                     Toggle("Request ChatGPT plan usage", isOn: $allowPlanUsage)
