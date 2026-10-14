@@ -16,3 +16,10 @@ References:
 - https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
 
 This follows the documented open-source/local application preview. Eligibility and production/commercial availability must be confirmed before distributing this connection beyond testing.
+
+## Live Mac verification — October 13, 2026
+
+- Identity-only dynamic registration returned `invalid_client` in both Brave and Chrome. The endpoint, installation ID, PKCE, and loopback callback matched the documented flow.
+- Enabling the existing opt-in plan-use toggle reached OpenAI’s consent screen in the default browser. After user approval, callback handling, token exchange, signed identity validation, and Keychain persistence succeeded. Settings showed Connected again after quitting and reopening Tierin. Reconnect completed through the default browser with no displayed error and retained the connected account.
+- The browser selector was removed at the user’s request; sign-in always uses the default browser. Plan access remains opt-in. The identity-only failure remains a known issue; this is not a claim that every sign-in path works.
+- No AI requests were run and no task content was sent. iPhone live verification, disconnect/revocation, and commercial distribution approval remain outstanding.
