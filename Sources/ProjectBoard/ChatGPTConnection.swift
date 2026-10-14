@@ -104,6 +104,10 @@ final class ChatGPTConnection {
 
 struct ChatGPTProfileView: View {
     @Bindable var connection: ChatGPTConnection
+    @Binding var selectedModel: String
+    @State private var models: [TaskGPTModel] = []
+    @State private var loadingModels = false
+    @State private var modelError: String?
     @State private var allowPlanUsage = false
     @Environment(\.boardAppearance) private var appearance
     @Environment(\.self) private var environment
@@ -114,45 +118,79 @@ struct ChatGPTProfileView: View {
                                 accentRed: channel(accent.red), accentGreen: channel(accent.green), accentBlue: channel(accent.blue))
     }
     var body: some View {
-        Form {
-                AppSection("ChatGPT account") {
-                    if let account = connection.account {
-                        Label(account.email ?? "ChatGPT account", systemImage: "checkmark.circle")
-                        Text(account.allowsPlanUsage ? "ChatGPT plan usage is enabled." : "Connected. ChatGPT plan usage is not enabled.")
-                            .font(AppTypography.supporting).foregroundStyle(.secondary)
-                        Button("Reconnect") { Task { await connection.connect(planUsage: allowPlanUsage, returnPage: returnPage) } }
-                            .appGlassButton()
-                        Button("Disconnect", role: .destructive) { Task { await connection.disconnect() } }
-                            .appGlassButton()
-                    } else {
-                        Text("Connect your ChatGPT account to Tierin.").font(AppTypography.body)
-                        if !connection.registrations.isEmpty {
-                            Picker("Account", selection: $connection.selectedClientID) {
-                                Text("Use another ChatGPT account").tag("")
-                                ForEach(connection.registrations) { registration in
-                                    Text("\(registration.email ?? "ChatGPT account") · \(registration.clientID.suffix(6))")
-                                        .tag(registration.clientID)
-                                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                IntegrationSettingsCard(title: "Account connection") {
+                    IntegrationAccountHeader(service: "ChatGPT",
+                        identity: connection.account?.email ?? "Connect your ChatGPT account to Tierin",
+                        connected: connection.account != nil)
+                    Divider()
+                    if connection.account == nil && !connection.registrations.isEmpty {
+                        Picker("Account", selection: $connection.selectedClientID) {
+                            Text("Use another ChatGPT account").tag("")
+                            ForEach(connection.registrations) { registration in
+                                Text("\(registration.email ?? "ChatGPT account") · \(registration.clientID.suffix(6))")
+                                    .tag(registration.clientID)
                             }
                         }
-                        Button("Continue with ChatGPT") { Task { await connection.connect(planUsage: allowPlanUsage, returnPage: returnPage) } }
-                            .appGlassButton(accent: true)
                     }
                     Toggle("Request ChatGPT plan usage", isOn: $allowPlanUsage)
-                    Text("This connects your account for future AI features. Tierin does not send tasks or read ChatGPT conversations. Plan usage is optional and does not run AI requests yet.")
-                        .font(AppTypography.caption).foregroundStyle(.secondary)
+                    Text("The GPT button sends a task’s description and ordered subtasks using your ChatGPT plan. Tierin does not read your ChatGPT conversations.")
+                        .font(AppTypography.supporting).foregroundStyle(.secondary)
+                    if let account = connection.account {
+                        Text(account.allowsPlanUsage ? "Plan usage is enabled." : "Plan usage is not enabled.")
+                            .font(AppTypography.caption).foregroundStyle(.secondary)
+                        if allowPlanUsage != account.allowsPlanUsage {
+                            Text("Reconnect to apply the permission change.")
+                                .font(AppTypography.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Divider()
+                    ViewThatFits(in: .horizontal) {
+                        HStack { connectionActions }
+                        VStack(alignment: .leading, spacing: 12) { connectionActions }
+                    }
                 }
                 .disabled(connection.isBusy)
+                if connection.account?.allowsPlanUsage == true {
+                    IntegrationSettingsCard(title: "Task model") {
+                        if loadingModels {
+                            ProgressView("Loading models…").font(AppTypography.supporting)
+                        } else {
+                            Picker("Model", selection: $selectedModel) {
+                                Text("Choose a model").tag("")
+                                if !selectedModel.isEmpty && !models.contains(where: { $0.slug == selectedModel }) {
+                                    Text("\(selectedModel) · unavailable").tag(selectedModel)
+                                }
+                                ForEach(models) { model in Text(model.display_name).tag(model.slug) }
+                            }
+                            Text("Used for the GPT action in every task. Save your settings to apply your selection.")
+                                .font(AppTypography.supporting).foregroundStyle(.secondary)
+                        }
+                        if let modelError {
+                            Text(modelError).font(AppTypography.supporting).foregroundStyle(.red)
+                            Button("Reload models") { Task { await loadModels() } }.appGlassButton()
+                        }
+                    }
+                    .disabled(connection.isBusy)
+                }
+                ChatGPTHistoryStorageView()
                 if connection.isBusy {
-                    HStack { ProgressView(); Text("Connecting…").font(AppTypography.supporting) }
-                    AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Cancel sign-in", action: connection.cancel)
+                    HStack {
+                        ProgressView()
+                        Text("Connecting…").font(AppTypography.supporting)
+                        Spacer()
+                        AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Cancel sign-in", action: connection.cancel)
+                    }
                 }
                 if let error = connection.error {
                     Text(error).font(AppTypography.supporting).foregroundStyle(.red)
                 }
             }
-            .formStyle(.grouped)
+            .padding(24)
+        }
         .onAppear { allowPlanUsage = connection.account?.allowsPlanUsage ?? false }
+        .task(id: connection.account?.expiresAt) { await loadModels() }
         .onDisappear { connection.cancel() }
         #if os(iOS)
         .sheet(isPresented: Binding(get: { connection.browserURL != nil }, set: { if !$0 { connection.browserURL = nil } }), onDismiss: connection.browserDismissed) {
@@ -165,6 +203,30 @@ struct ChatGPTProfileView: View {
         }
         #endif
     }
+    @ViewBuilder private var connectionActions: some View {
+        if connection.account != nil {
+            Button("Reconnect") { Task { await connection.connect(planUsage: allowPlanUsage, returnPage: returnPage) } }
+                .appGlassButton()
+            Button("Disconnect", role: .destructive) { Task { await connection.disconnect() } }
+                .appGlassButton()
+        } else {
+            Button("Continue with ChatGPT") { Task { await connection.connect(planUsage: allowPlanUsage, returnPage: returnPage) } }
+                .appGlassButton(accent: true)
+        }
+    }
+
+    private func loadModels() async {
+        models = []; modelError = nil
+        guard connection.account?.allowsPlanUsage == true else { return }
+        loadingModels = true
+        defer { loadingModels = false }
+        do { models = try await TaskGPTClient.models() }
+        catch {
+            guard !Task.isCancelled else { return }
+            modelError = (error as? ChatGPTConnectionError)?.localizedDescription ?? "Couldn’t load models. Please try again."
+        }
+    }
+
 }
 
 #if os(iOS)
@@ -185,3 +247,42 @@ private struct ChatGPTSignInBrowser: UIViewControllerRepresentable {
     }
 }
 #endif
+
+private struct ChatGPTHistoryStorageView: View {
+    @State private var history = TaskGPTRuns.shared
+    @State private var confirmClear = false
+    @State private var clearError: String?
+
+    var body: some View {
+        IntegrationSettingsCard(title: "GPT history storage") {
+            HStack {
+                Text("On this device").font(AppTypography.body)
+                Spacer()
+                Text(ByteCountFormatter.string(fromByteCount: history.historySizeBytes, countStyle: .file))
+                    .font(AppTypography.itemTitle).monospacedDigit()
+            }
+            Text("Saved prompts and responses remain available after restarting Tierin. History is stored separately on each device.")
+                .font(AppTypography.supporting).foregroundStyle(.secondary)
+            if let error = clearError ?? history.persistenceError {
+                Text(error).font(AppTypography.supporting).foregroundStyle(.red)
+            }
+            if history.hasActiveRuns {
+                Text("Stop running GPT requests before clearing history.")
+                    .font(AppTypography.supporting).foregroundStyle(.secondary)
+            }
+            Button("Clear GPT history", role: .destructive) { confirmClear = true }
+                .appGlassButton()
+                .disabled(history.hasActiveRuns || (history.historySizeBytes == 0 && history.runs.isEmpty))
+        }
+        .onAppear { history.flushHistory() }
+        .confirmationDialog("Clear GPT history on this device?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("Clear history", role: .destructive) {
+                do { try history.clearHistory(); clearError = nil }
+                catch { clearError = "Couldn’t clear GPT history. Please try again." }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This permanently removes saved GPT prompts, responses and review history from this device. Your projects, tasks, completed status and ChatGPT connection stay unchanged.")
+        }
+    }
+}

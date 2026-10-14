@@ -214,24 +214,39 @@ struct GitHubProfileView: View {
     @State private var token = ""
 
     var body: some View {
-        Form {
-                AppSection("GitHub account") {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                IntegrationSettingsCard(title: "Account connection") {
+                    IntegrationAccountHeader(service: "GitHub",
+                        identity: connection.username.map { "@" + $0 } ?? (connection.isConnected ? "Saved on this device" : "Link repositories to your Tierin projects"),
+                        connected: connection.isConnected, needsReconnect: connection.needsReconnect)
                     if connection.isConnected {
-                        Label(connection.username.map { "Connected as " + $0 } ?? "Connection saved on this device", systemImage: "checkmark.circle")
-                            .font(AppTypography.body)
-                        if let count = connection.repositoryCount {
-                            Text("\(count) repositories available to link")
+                        Divider()
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Repository access").font(AppTypography.contextTitle)
+                            if let count = connection.repositoryCount {
+                                Text("\(count) repositories available to link")
+                                    .font(AppTypography.supporting).foregroundStyle(.secondary)
+                            }
+                            Text("Choose a repository when creating or editing a project.")
                                 .font(AppTypography.supporting).foregroundStyle(.secondary)
                         }
-                        Button("Refresh connection") { Task { await connection.refresh() } }
-                            .appGlassButton()
-                        Button("Disconnect", role: .destructive) { connection.disconnect() }
-                            .appGlassButton()
+                        Divider()
+                        ViewThatFits(in: .horizontal) {
+                            HStack { connectionActions }
+                            VStack(alignment: .leading, spacing: 12) { connectionActions }
+                        }
                     }
-                    if !connection.isConnected || connection.needsReconnect {
-                        Text("Connect GitHub to select repositories for your projects.")
-                            .font(AppTypography.body)
-                        SecureField("Fine-grained access token", text: $token)
+                }
+                .disabled(connection.isBusy)
+                if !connection.isConnected || connection.needsReconnect {
+                    IntegrationSettingsCard(title: connection.needsReconnect ? "Reconnect account" : "Connect account") {
+                        Text("Fine-grained access token").font(AppTypography.contextTitle)
+                        SecureField("Paste your GitHub token", text: $token)
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                        Text("Select the repositories you want Tierin to see. Only read access to repository metadata is needed.")
+                            .font(AppTypography.supporting).foregroundStyle(.secondary)
                         Button("Connect GitHub") {
                             Task {
                                 await connection.connect(token: token)
@@ -241,23 +256,35 @@ struct GitHubProfileView: View {
                         .appGlassButton(accent: true)
                         .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         Link("Create a token on GitHub", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
+                            .font(AppTypography.supporting)
                     }
-                    Text("Select the repositories you want Tierin to see. Repository metadata needs read access; no code, issue, or write permission is required. The token stays on this device.")
-                        .font(AppTypography.caption).foregroundStyle(.secondary)
+                    .disabled(connection.isBusy)
                 }
-                .disabled(connection.isBusy)
-                if connection.isBusy { ProgressView("Checking GitHub…") }
+                IntegrationSettingsCard(title: "Permissions & storage") {
+                    Label("Repository metadata only", systemImage: "lock.shield")
+                        .font(AppTypography.contextTitle)
+                    Text("Tierin does not need code, issue, or write access. Your access token stays securely on this device.")
+                        .font(AppTypography.supporting).foregroundStyle(.secondary)
+                }
+                if connection.isBusy { ProgressView("Checking GitHub…").font(AppTypography.supporting) }
                 if let error = connection.error {
                     Text(error).font(AppTypography.supporting).foregroundStyle(.red)
                 }
-            }
-            .formStyle(.grouped)
+            }.padding(24)
+        }
         .task {
             connection.load()
             if connection.isConnected { await connection.refresh() }
         }
         .onDisappear { token = "" }
     }
+    @ViewBuilder private var connectionActions: some View {
+        Button("Refresh connection") { Task { await connection.refresh() } }
+            .appGlassButton()
+        Button("Disconnect", role: .destructive) { connection.disconnect() }
+            .appGlassButton()
+    }
+
 }
 
 #endif

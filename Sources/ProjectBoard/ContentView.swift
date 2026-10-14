@@ -91,6 +91,10 @@ struct ContentView: View {
         }
         #endif
         .modifier(MainWindowSizing())
+        .overlay(alignment: .top) { TaskGPTBanner() }
+        .onReceive(NotificationCenter.default.publisher(for: .tierinGPTDidStart)) { _ in
+            linkedTask = nil
+        }
         .onAppear {
             #if os(macOS)
             if selection == nil { selection = projects.first?.id }
@@ -759,6 +763,7 @@ struct ProjectBoardView: View {
     let deleteProject: () -> Void
     @State private var editor: TaskEditRequest?
     @State private var viewingTask: BoardTask?
+    @State private var gptReview: TaskGPTReviewRequest?
     @State private var calendarTask: BoardTask?
     @State private var deleting: BoardTask?
     @State private var error: String?
@@ -826,10 +831,19 @@ struct ProjectBoardView: View {
         .sheet(item: $editor) {
             TaskEditor(project: project, task: $0.task, initialStatus: $0.status, parentTask: $0.parentTask)
         }
+        .sheet(item: $gptReview) { request in
+            TaskChatGPTView(runID: request.id, focusedItemID: request.itemID,
+                onAccept: { try TaskGPTAcceptance.complete($0, in: context) }, onClose: { gptReview = nil })
+        }
         .sheet(item: $viewingTask) { TaskDetailView(project: project, task: $0, onClose: nil) }
         #else
         .overlay {
-            if let calendarTask {
+            if let gptReview {
+                MacInWindowModal(onDismiss: { self.gptReview = nil }) {
+                    TaskChatGPTView(runID: gptReview.id, focusedItemID: gptReview.itemID,
+                        onAccept: { try TaskGPTAcceptance.complete($0, in: context) }, onClose: { self.gptReview = nil })
+                }
+            } else if let calendarTask {
                 MacInWindowModal(onDismiss: { self.calendarTask = nil }) {
                     CalendarDeadlineSheet(task: calendarTask, onClose: { self.calendarTask = nil })
                 }
@@ -854,6 +868,9 @@ struct ProjectBoardView: View {
             }
         }
         #endif
+        .onReceive(NotificationCenter.default.publisher(for: .tierinGPTDidStart)) { _ in
+            viewingTask = nil
+        }
         .confirmationDialog("Delete task?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete Task", role: .destructive) {
                 if let deleting { context.delete(deleting); save() }
@@ -1013,8 +1030,9 @@ struct ProjectBoardView: View {
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             ForEach(tasks) { task in
-                                Button { viewingTask = task } label: { TaskCard(task: task) }
-                                    .buttonStyle(.plain)
+                                TaskCard(task: task, onOpen: { viewingTask = task }, onResponse: { runID, itemID in
+                                    gptReview = TaskGPTReviewRequest(id: runID, itemID: itemID)
+                                })
                                     .draggable(task.id.uuidString)
                                     .contextMenu {
                                         Button("Edit Task") { editor = .init(task: task) }
@@ -1087,8 +1105,12 @@ struct ProjectBoardView: View {
 
 struct TaskCard: View {
     let task: BoardTask
+    let onOpen: () -> Void
+    let onResponse: (UUID, UUID?) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 10) {
             Text(task.title).font(AppTypography.itemTitle).fixedSize(horizontal: false, vertical: true)
             if !task.details.isEmpty { Text(task.details).font(AppTypography.supporting).foregroundStyle(.secondary).lineLimit(2) }
             if !task.tags.isEmpty {
@@ -1117,10 +1139,16 @@ struct TaskCard: View {
                 }
                 .font(AppTypography.caption)
             }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            TaskGPTResponseLinks(task: task, onOpen: onResponse)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .appCardSurface(cornerRadius: 10)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
