@@ -44,7 +44,7 @@ final class ChatGPTConnection {
             try ChatGPTKeychain.remove("registration")
         } catch { self.error = "Couldn’t load the saved ChatGPT connection." }
     }
-    func connect(planUsage: Bool) async {
+    func connect(planUsage: Bool, returnPage: ChatGPTReturnPage = .init()) async {
         guard !isBusy else { return }
         isBusy = true; error = nil
         let attempt = UUID(); attemptID = attempt
@@ -54,7 +54,7 @@ final class ChatGPTConnection {
             let state = try ChatGPTOAuth.random(), nonce = try ChatGPTOAuth.random(), verifier = try ChatGPTOAuth.random()
             let listener = ChatGPTCallbackListener()
             self.listener = listener
-            let callback = try await listener.start(state: state)
+            let callback = try await listener.start(state: state, returnPage: returnPage)
             guard attemptID == attempt else { throw CancellationError() }
             let authorization = ChatGPTOAuth.authorizationURL(host: try ChatGPTOAuth.hostID(), callback: callback, state: state, nonce: nonce, verifier: verifier, account: selectedAccount, registration: selectedRegistration, planUsage: planUsage)
             awaitingBrowser = true
@@ -105,6 +105,14 @@ final class ChatGPTConnection {
 struct ChatGPTProfileView: View {
     @Bindable var connection: ChatGPTConnection
     @State private var allowPlanUsage = false
+    @Environment(\.boardAppearance) private var appearance
+    @Environment(\.self) private var environment
+    private var returnPage: ChatGPTReturnPage {
+        let accent = appearance.accent.color.resolve(in: environment)
+        func channel(_ value: Float) -> UInt8 { UInt8(min(255, max(0, (value * 255).rounded()))) }
+        return ChatGPTReturnPage(appearance: .init(rawValue: appearance.mode.rawValue) ?? .system,
+                                accentRed: channel(accent.red), accentGreen: channel(accent.green), accentBlue: channel(accent.blue))
+    }
     var body: some View {
         Form {
                 AppSection("ChatGPT account") {
@@ -112,7 +120,7 @@ struct ChatGPTProfileView: View {
                         Label(account.email ?? "ChatGPT account", systemImage: "checkmark.circle")
                         Text(account.allowsPlanUsage ? "ChatGPT plan usage is enabled." : "Connected. ChatGPT plan usage is not enabled.")
                             .font(AppTypography.supporting).foregroundStyle(.secondary)
-                        Button("Reconnect") { Task { await connection.connect(planUsage: allowPlanUsage) } }
+                        Button("Reconnect") { Task { await connection.connect(planUsage: allowPlanUsage, returnPage: returnPage) } }
                             .appGlassButton()
                         Button("Disconnect", role: .destructive) { Task { await connection.disconnect() } }
                             .appGlassButton()
@@ -127,7 +135,7 @@ struct ChatGPTProfileView: View {
                                 }
                             }
                         }
-                        Button("Continue with ChatGPT") { Task { await connection.connect(planUsage: allowPlanUsage) } }
+                        Button("Continue with ChatGPT") { Task { await connection.connect(planUsage: allowPlanUsage, returnPage: returnPage) } }
                             .appGlassButton(accent: true)
                     }
                     Toggle("Request ChatGPT plan usage", isOn: $allowPlanUsage)

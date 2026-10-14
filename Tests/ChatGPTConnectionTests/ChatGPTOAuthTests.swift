@@ -103,8 +103,16 @@ func b64(_ data: Data) -> String {
         let (_, rejected) = try await URLSession.shared.data(from: wrong)
         expect((rejected as? HTTPURLResponse)?.statusCode == 400, "Wrong state rejected without consuming listener")
         let valid = URL(string: callback.absoluteString + "?code=c&state=listener-state&client_id=oaiapp_test")!
-        let (_, accepted) = try await URLSession.shared.data(from: valid)
+        let (pageData, accepted) = try await URLSession.shared.data(from: valid)
         expect((accepted as? HTTPURLResponse)?.statusCode == 200, "Valid loopback callback")
+        let page = String(decoding: pageData, as: UTF8.self)
+        expect(page.contains("Open Tierin") && page.contains("tierin://auth/return"), "Callback has an app return action")
+        expect(page.contains("/auth/complete") && !page.contains("listener-state"), "History is cleaned without reflecting callback parameters")
+        expect((accepted as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") == "text/html; charset=utf-8", "HTML response")
+        expect((accepted as? HTTPURLResponse)?.value(forHTTPHeaderField: "Referrer-Policy") == "no-referrer", "Callback never sends its URL as a referrer")
+        expect((accepted as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Security-Policy")?.contains("default-src 'none'") == true, "No external callback-page resources")
+        expect(ChatGPTReturnPage(appearance: .dark, accentRed: 100, accentGreen: 120, accentBlue: 140).html(kind: .received).contains("color-scheme: dark; --accent: rgb(100 120 140)"), "Profile theme and accent reach return page")
+        expect(ChatGPTReturnPage().html(kind: .declined).contains("Connection not completed"), "Declined consent is not shown as success")
         let returned = try await received
         expect(returned == valid, "Callback returned intact")
         listener.cancel()
