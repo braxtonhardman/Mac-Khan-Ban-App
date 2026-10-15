@@ -27,7 +27,7 @@ struct UnlimitedPaywall: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(purchases.hasUnlimited ? "Room for every project" : "Make room for your next idea")
                             .font(AppTypography.boardTitle)
-                        Text(purchases.hasUnlimited ? "Your subscription includes unlimited projects and areas on Mac and iPhone." : (reason?.limitMessage ?? "Start free with 3 projects and 1 area. Unlock unlimited space as your plans grow."))
+                        Text(purchases.hasUnlimited ? "Your subscription includes unlimited projects and areas on Mac and iPhone." : (reason?.limitMessage ?? "Start free with 5 projects and 2 areas. Unlock unlimited space as your plans grow."))
                             .font(AppTypography.supporting)
                             .foregroundStyle(.secondary)
                     }

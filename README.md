@@ -1,6 +1,6 @@
 # Tierin
 
-Tierin is a native SwiftUI personal project tracker for Mac and iPhone. SwiftData saves your work locally. Optional iCloud builds sync projects, areas, tasks, and profile settings through your private CloudKit database. There is no custom backend, Docker service, or third-party dependency. The free plan allows 3 projects and 1 area; an optional monthly Tierin Unlimited subscription removes those limits. Tasks and subtasks are unlimited on both plans.
+Tierin is a native SwiftUI personal project tracker for Mac and iPhone. SwiftData saves your work locally. Optional iCloud builds sync projects, areas, tasks, and profile settings through your private CloudKit database. There is no custom backend, Docker service, or third-party dependency. The free plan allows 5 projects and 2 areas; an optional monthly Tierin Unlimited subscription removes those limits. Tasks and subtasks are unlimited on both plans.
 
 ## Run
 
@@ -167,7 +167,7 @@ The app's interactive accent color remains a separate profile preference.
 
 ## Tierin Unlimited monthly subscription
 
-- Free: 3 projects and 1 named area across the whole workspace. Unassigned is a virtual group and does not count as an area.
+- Free: 5 projects and 2 named areas across the whole workspace. Unassigned is a virtual group and does not count as an area.
 - Unlimited: unlimited projects and areas for the duration of the monthly subscription. Tasks, subtasks, editing, viewing, deleting, calendar export, and iCloud sync are not paywalled.
 - Creating a fourth project or second area opens the paywall. The shared persistence writer rechecks counts immediately before insertion, including records that arrived while an editor was open.
 - Existing data over the limits remains accessible after an upgrade, expiry, refund, or restore failure. No projects or areas are deleted or hidden. Deleting items frees quota.

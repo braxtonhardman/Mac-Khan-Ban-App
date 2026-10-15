@@ -192,7 +192,7 @@ struct ProfileSettingsView: View {
                     SettingsRowLabel(
                         icon: "sparkles",
                         title: purchases.hasUnlimited ? "Tierin Unlimited" : "Free plan",
-                        subtitle: purchases.hasUnlimited ? "Unlimited projects and areas" : "3 projects · 1 area · Unlimited tasks",
+                        subtitle: purchases.hasUnlimited ? "Unlimited projects and areas" : "5 projects · 2 areas · Unlimited tasks",
                         value: purchases.hasUnlimited ? "Manage" : "Upgrade"
                     )
                 }
