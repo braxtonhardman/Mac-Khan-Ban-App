@@ -933,8 +933,7 @@ struct ProjectBoardView: View {
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             ForEach(tasks) { task in
-                                Button { viewingTask = task } label: { TaskCard(task: task) }
-                                    .buttonStyle(.plain)
+                                TaskCard(task: task, onOpen: { viewingTask = task })
                                     .draggable(task.id.uuidString)
                                     .contextMenu {
                                         Button("Edit Task") { editor = .init(task: task) }
@@ -1007,8 +1006,11 @@ struct ProjectBoardView: View {
 
 struct TaskCard: View {
     let task: BoardTask
+    let onOpen: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 10) {
             Text(task.title).font(AppTypography.itemTitle).fixedSize(horizontal: false, vertical: true)
             if !task.details.isEmpty { Text(task.details).font(AppTypography.supporting).foregroundStyle(.secondary).lineLimit(2) }
             if !task.tags.isEmpty {
@@ -1037,10 +1039,15 @@ struct TaskCard: View {
                 }
                 .font(AppTypography.caption)
             }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .appCardSurface(cornerRadius: 10)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 

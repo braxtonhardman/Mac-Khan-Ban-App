@@ -27,7 +27,7 @@ struct UnlimitedPaywall: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(purchases.hasUnlimited ? "Room for every project" : "Make room for your next idea")
                             .font(AppTypography.boardTitle)
-                        Text(purchases.hasUnlimited ? "Your subscription includes unlimited projects and areas on Mac and iPhone." : (reason?.limitMessage ?? "Start free with 3 projects and 1 area. Unlock unlimited space as your plans grow."))
+                        Text(purchases.hasUnlimited ? "Your subscription includes unlimited projects and areas on Mac and iPhone." : (reason?.limitMessage ?? "Start free with 5 projects and 2 areas. Unlock unlimited space as your plans grow."))
                             .font(AppTypography.supporting)
                             .foregroundStyle(.secondary)
                     }
@@ -84,7 +84,7 @@ struct UnlimitedPaywall: View {
                         Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
                             .font(AppTypography.caption)
                         DisclosureGroup("Privacy Policy") {
-                            Text("Tierin stores projects, tasks, profile details, and onboarding preferences on your device and, in iCloud builds, in your private iCloud database. Sign in with Apple provides your account identifier and any name or email you choose to share. Apple processes subscriptions; Tierin uses verified purchase records to determine access and does not receive your card details. Calendar access is used only when you choose to export a task deadline. Tierin contains no advertising or analytics SDK. GitHub and ChatGPT connections are not active. You can delete workspace items in the app; signing out does not delete saved data.")
+                            Text("Tierin stores projects, tasks, profile details, and onboarding preferences on your device and, in iCloud builds, in your private iCloud database. Sign in with Apple provides your account identifier and any name or email you choose to share. Apple processes subscriptions; Tierin uses verified purchase records to determine access and does not receive your card details. Calendar access is used only when you choose to export a task deadline. Tierin contains no advertising or analytics SDK. You can delete workspace items in the app; signing out does not delete saved data.")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(.secondary)
                         }

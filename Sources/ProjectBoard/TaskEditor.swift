@@ -159,11 +159,13 @@ struct TaskEditor: View {
             Form {
                 AppSection("Task", headingColor: .white) {
                     TextField("Title", text: $title)
-                    Picker("Status", selection: $status) {
-                        ForEach(TaskStatus.allCases) { Text(appearance.title(for: $0)).tag($0) }
-                    }
-                    Picker("Priority", selection: $priority) {
-                        ForEach(TaskPriority.allCases) { Text($0.title).tag($0) }
+                    if parentTask == nil {
+                        Picker("Status", selection: $status) {
+                            ForEach(TaskStatus.allCases) { Text(appearance.title(for: $0)).tag($0) }
+                        }
+                        Picker("Priority", selection: $priority) {
+                            ForEach(TaskPriority.allCases) { Text($0.title).tag($0) }
+                        }
                     }
                 }
                 AppSection("Description", headingColor: .white) {
@@ -184,11 +186,13 @@ struct TaskEditor: View {
                             .frame(maxWidth: .infinity, minHeight: 85, alignment: .topLeading)
                     }
                 }
-                AppSection("Details", headingColor: .white) {
-                    dueDateField
-                    if dueDate != nil {
-                        Text("Connect Apple Calendar in Profile to automatically sync task deadlines to your chosen calendar.")
-                            .font(AppTypography.caption).foregroundStyle(.secondary)
+                if parentTask == nil {
+                    AppSection("Details", headingColor: .white) {
+                        dueDateField
+                        if dueDate != nil {
+                            Text("Connect Apple Calendar in Profile to automatically sync task deadlines to your chosen calendar.")
+                                .font(AppTypography.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 AppSection("Tags", headingColor: .white) {

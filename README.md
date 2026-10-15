@@ -1,6 +1,6 @@
 # Tierin
 
-Tierin is a native SwiftUI personal project tracker for Mac and iPhone. SwiftData saves your work locally. Optional iCloud builds sync projects, areas, tasks, and profile settings through your private CloudKit database. There is no custom backend, Docker service, or third-party dependency. The free plan allows 3 projects and 1 area; an optional monthly Tierin Unlimited subscription removes those limits. Tasks and subtasks are unlimited on both plans.
+Tierin is a native SwiftUI personal project tracker for Mac and iPhone. SwiftData saves your work locally. Optional iCloud builds sync projects, areas, tasks, and profile settings through your private CloudKit database. There is no custom backend, Docker service, or third-party dependency. The free plan allows 5 projects and 2 areas; an optional monthly Tierin Unlimited subscription removes those limits. Tasks and subtasks are unlimited on both plans.
 
 ## Run
 
@@ -54,7 +54,7 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 
 The top-right profile button opens shared board preferences:
 
-- The settings landing page groups profile and storage status, future account integrations, and general preferences. GitHub and OpenAI/ChatGPT appear as clearly marked, inactive connection placeholders until authentication is implemented.
+- The settings landing page groups your Apple profile, storage and sync status, calendar settings, and general preferences.
 - Rename all four stages. Names apply across projects and task status menus; the fourth stage still counts as completed work. Existing Blocked tasks appear in In Progress, and custom names for the remaining stages are preserved.
 - Choose red, orange, yellow, green, teal, blue, purple, or pink as the app accent.
 - Choose System, Light, or Dark appearance. Light and Dark override the device setting; System follows each device. The choice syncs with your profile.
@@ -113,14 +113,10 @@ swift test
 
 Xcode compiles the core directly into both apps; Swift Package Manager builds it as a separate module. The optional package executable can use a different store because it is not bundled in the same sandbox. Use the Xcode app consistently for your real data.
 
-## Next: account integrations
+## Next
 
-1. Add a `GitHubClient` protocol with a mock implementation; keep HTTP and authentication out of views and models.
-2. Associate repository/issue/PR link records with stable local task UUIDs, with a tested schema upgrade.
-3. Store opt-in credentials in Keychain. Start with read-only imports and status refresh while preserving offline use.
-4. Add explicit push actions, conflict review, retries, and rate-limit tests before two-way GitHub sync.
-5. Define an `OpenAIClient` boundary and explicit user-controlled project context before enabling ChatGPT-assisted planning. Keep provider credentials in Keychain and out of SwiftData and CloudKit.
-6. Add JSON export/import, undo, manual card ordering, and broader UI automation.
+- JSON export/import, undo, manual card ordering, and broader UI automation.
+- GitHub and GPT integrations have been removed. Legacy database fields remain unused for store compatibility. Existing local GPT history and Keychain entries are not read by the app or deleted by this update.
 
 ## Validation notes
 
@@ -171,7 +167,7 @@ The app's interactive accent color remains a separate profile preference.
 
 ## Tierin Unlimited monthly subscription
 
-- Free: 3 projects and 1 named area across the whole workspace. Unassigned is a virtual group and does not count as an area.
+- Free: 5 projects and 2 named areas across the whole workspace. Unassigned is a virtual group and does not count as an area.
 - Unlimited: unlimited projects and areas for the duration of the monthly subscription. Tasks, subtasks, editing, viewing, deleting, calendar export, and iCloud sync are not paywalled.
 - Creating a fourth project or second area opens the paywall. The shared persistence writer rechecks counts immediately before insertion, including records that arrived while an editor was open.
 - Existing data over the limits remains accessible after an upgrade, expiry, refund, or restore failure. No projects or areas are deleted or hidden. Deleting items frees quota.

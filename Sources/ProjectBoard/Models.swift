@@ -25,6 +25,9 @@ final class Project {
     var id: UUID = UUID()
     var name: String = ""
     var notes: String = ""
+    // Legacy integration fields retained only for existing SwiftData/CloudKit store compatibility.
+    var githubRepositoryID: Int64?
+    var githubRepositoryFullName: String?
     var area: ProjectArea?
     var createdAt: Date = Date()
     @Relationship(deleteRule: .cascade, inverse: \BoardTask.project)
@@ -70,6 +73,14 @@ final class BoardTask {
             newestByID[child.id] = child
         }
         return Array(newestByID.values)
+    }
+
+    /// Stable display order for subtasks, including a tie-breaker.
+    var orderedSubtasks: [BoardTask] {
+        subtaskList.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     init(title: String, status: TaskStatus = .backlog, project: Project? = nil) {
@@ -157,6 +168,8 @@ final class AppProfile {
     var tagNames: [String] = []
     /// Additive scalar storage keeps existing local and CloudKit profiles compatible.
     var tagColorsJSON: String = "{}"
+    /// Legacy field retained only for existing SwiftData/CloudKit store compatibility.
+    var chatGPTModel: String = ""
     var appleUserIdentifier: String?
     var displayName: String?
     var onboardingFocusValue: String?

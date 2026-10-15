@@ -145,8 +145,6 @@ struct ProfileSettingsView: View {
                         ScrollView { SyncStatusView() }
                     case .calendar:
                         CalendarSettingsView()
-                    case .integration(let integration):
-                        ScrollView { AccountIntegrationView(integration: integration) }
                     case .appearance:
                         AppearanceSettingsPage(draft: $draft)
                     case .stages:
@@ -194,24 +192,11 @@ struct ProfileSettingsView: View {
                     SettingsRowLabel(
                         icon: "sparkles",
                         title: purchases.hasUnlimited ? "Tierin Unlimited" : "Free plan",
-                        subtitle: purchases.hasUnlimited ? "Unlimited projects and areas" : "3 projects · 1 area · Unlimited tasks",
+                        subtitle: purchases.hasUnlimited ? "Unlimited projects and areas" : "5 projects · 2 areas · Unlimited tasks",
                         value: purchases.hasUnlimited ? "Manage" : "Upgrade"
                     )
                 }
                 .buttonStyle(.plain)
-            }
-            AppSection("Accounts") {
-                ForEach(AccountIntegration.allCases) { integration in
-                    Button { page = .integration(integration) } label: {
-                        SettingsRowLabel(
-                            icon: integration.icon,
-                            title: integration.title,
-                            subtitle: "Not connected",
-                            value: "Set up later"
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             AppSection("Calendar") {
                 Button { page = .calendar } label: {
@@ -349,7 +334,6 @@ struct ProfileSettingsView: View {
 
 private enum ProfilePage {
     case account, sync, calendar, appearance, stages, tags
-    case integration(AccountIntegration)
     var title: String {
         switch self {
         case .account: "Apple Account"
@@ -358,7 +342,6 @@ private enum ProfilePage {
         case .appearance: "Appearance"
         case .stages: "Board Stages"
         case .tags: "Tags"
-        case .integration(let integration): integration.title
         }
     }
 }
@@ -439,49 +422,6 @@ private struct SettingsRowLabel: View {
         }
         .contentShape(Rectangle())
         .padding(.vertical, 7)
-    }
-}
-
-private enum AccountIntegration: String, CaseIterable, Identifiable {
-    case github
-    case openAI
-
-    var id: String { rawValue }
-    var title: String { self == .github ? "GitHub" : "OpenAI / ChatGPT" }
-    var icon: String { self == .github ? "chevron.left.forwardslash.chevron.right" : "sparkles" }
-    var summary: String {
-        switch self {
-        case .github:
-            return "A future GitHub connection will attach issues and pull requests to tasks."
-        case .openAI:
-            return "A future OpenAI connection will support task planning and project assistance."
-        }
-    }
-}
-
-private struct AccountIntegrationView: View {
-    let integration: AccountIntegration
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: integration.icon)
-                .font(.system(size: 46))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            Text("Not connected").font(AppTypography.sectionTitle)
-            Text(integration.summary)
-                .font(AppTypography.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Label("Connection setup is planned for a later integration release.", systemImage: "clock")
-                .font(AppTypography.supporting)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("Connect \(integration.title)") {}
-                .appGlassButton(accent: true)
-                .disabled(true)
-        }
-        .padding(24)
     }
 }
 

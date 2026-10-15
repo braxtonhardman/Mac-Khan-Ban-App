@@ -15,6 +15,8 @@ final class PersistenceTests: XCTestCase {
                                                create: { Project(name: "") }) {
             $0.area = area
             $0.notes = "Keep these notes"
+            $0.githubRepositoryID = 12345
+            $0.githubRepositoryFullName = "example/board"
         }
         let task = BoardTask(title: "Keep this task", project: project)
         context.insert(task)
@@ -32,6 +34,8 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(project.area?.name, "Personal")
         XCTAssertEqual(project.name, "Tracker")
         XCTAssertEqual(project.notes, "Keep these notes")
+        XCTAssertEqual(project.githubRepositoryID, 12345)
+        XCTAssertEqual(project.githubRepositoryFullName, "example/board")
         XCTAssertEqual(project.taskList.map(\.id), [task.id])
         XCTAssertThrowsError(try StoreWriter.saveItem(project, name: " ", in: context,
                                                      create: { Project(name: "") }))

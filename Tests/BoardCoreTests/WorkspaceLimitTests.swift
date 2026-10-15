@@ -13,26 +13,27 @@ final class WorkspaceLimitTests: XCTestCase {
         return context
     }
 
-    @MainActor func testFourthProjectAndSecondAreaAreBlockedWithoutInserting() throws {
+    @MainActor func testSixthProjectAndThirdAreaAreBlockedWithoutInserting() throws {
         let context = try makeContext()
-        for index in 1...3 {
+        for index in 1...5 {
             _ = try StoreWriter.saveItem(nil, name: "Project \(index)", in: context, create: { Project(name: "") })
         }
-        XCTAssertThrowsError(try StoreWriter.saveItem(nil, name: "Fourth", in: context, create: { Project(name: "") })) {
+        XCTAssertThrowsError(try StoreWriter.saveItem(nil, name: "Sixth", in: context, create: { Project(name: "") })) {
             XCTAssertEqual(($0 as? WorkspaceLimitError)?.resource, .project)
         }
         _ = try StoreWriter.saveItem(nil, name: "Work", in: context, create: { ProjectArea(name: "") })
-        XCTAssertThrowsError(try StoreWriter.saveItem(nil, name: "Personal", in: context, create: { ProjectArea(name: "") })) {
+        _ = try StoreWriter.saveItem(nil, name: "Personal", in: context, create: { ProjectArea(name: "") })
+        XCTAssertThrowsError(try StoreWriter.saveItem(nil, name: "Third area", in: context, create: { ProjectArea(name: "") })) {
             XCTAssertEqual(($0 as? WorkspaceLimitError)?.resource, .area)
         }
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Project>()), 3)
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ProjectArea>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Project>()), 5)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ProjectArea>()), 2)
         XCTAssertFalse(context.hasChanges)
     }
 
     @MainActor func testSubscribedUsersCanCreateBeyondBothLimitsAndStillEditAfterExpiry() throws {
         let context = try makeContext()
-        for index in 1...5 {
+        for index in 1...6 {
             _ = try StoreWriter.saveItem(nil, name: "Project \(index)", in: context, hasUnlimitedAccess: true, create: { Project(name: "") })
             _ = try StoreWriter.saveItem(nil, name: "Area \(index)", in: context, hasUnlimitedAccess: true, create: { ProjectArea(name: "") })
         }
@@ -42,13 +43,13 @@ final class WorkspaceLimitTests: XCTestCase {
         _ = try StoreWriter.saveItem(area, name: "Still accessible", in: context, create: { ProjectArea(name: "") })
         XCTAssertEqual(project.name, "Still editable")
         XCTAssertEqual(area.name, "Still accessible")
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Project>()), 5)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Project>()), 6)
         XCTAssertThrowsError(try StoreWriter.requireCreationAccess(.project, in: context, hasUnlimited: false))
     }
 
     @MainActor func testSaveRechecksQuotaAfterAnotherContextAddsAProjectAndDeletionFreesSpace() throws {
         let context = try makeContext()
-        for index in 1...2 { context.insert(Project(name: "Existing \(index)")) }
+        for index in 1...4 { context.insert(Project(name: "Existing \(index)")) }
         try context.save()
         try StoreWriter.requireCreationAccess(.project, in: context, hasUnlimited: false)
         let other = ModelContext(context.container)
@@ -59,6 +60,6 @@ final class WorkspaceLimitTests: XCTestCase {
         context.delete(project)
         try context.save()
         _ = try StoreWriter.saveItem(nil, name: "Draft", in: context, create: { Project(name: "") })
-        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Project>()), 3)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Project>()), 5)
     }
 }

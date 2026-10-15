@@ -77,20 +77,22 @@ struct TaskDetailView: View {
 
     private var detailLayout: some View {
         VStack(spacing: 0) {
-            ZStack {
+            HStack(spacing: 12) {
+                if task.parentTask == nil {
+                    AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Close", action: close)
+                        .keyboardShortcut(.cancelAction)
+                } else {
+                    Button(action: close) { Image(systemName: "chevron.left") }
+                        .appGlassButton(size: .medium, shape: .circle)
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Back to parent task")
+                }
                 Text(task.parentTask == nil ? "Task Details" : "Subtask Details")
                     .font(AppTypography.pageTitle)
-                HStack {
-                    if task.parentTask == nil {
-                        AppGlassActionButton(symbol: .cancel, accessibilityLabel: "Close", action: close)
-                            .keyboardShortcut(.cancelAction)
-                    } else {
-                        Button(action: close) { Image(systemName: "chevron.left") }
-                            .appGlassButton(size: .medium, shape: .circle)
-                            .keyboardShortcut(.cancelAction)
-                            .accessibilityLabel("Back to parent task")
-                    }
-                    Spacer()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+                HStack(spacing: 10) {
                     Button { showingEditor = true } label: { Image(systemName: "pencil") }
                         .appGlassButton(size: .medium, shape: .circle)
                         .keyboardShortcut("e", modifiers: .command)
@@ -109,7 +111,9 @@ struct TaskDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 titleBlock
-                metadataGrid
+                if task.parentTask == nil {
+                    metadataGrid
+                }
                 descriptionSection
                 if !task.tags.isEmpty { tagsSection }
                 subtasksSection
@@ -185,7 +189,7 @@ struct TaskDetailView: View {
     }
 
     private var subtasksSection: some View {
-        let subtasks = task.subtaskList.sorted { $0.createdAt < $1.createdAt }
+        let subtasks = task.orderedSubtasks
         let completed = subtasks.filter { $0.status == .done }.count
         return TaskDetailSection(title: "Subtasks \(completed)/\(subtasks.count)") {
             if subtasks.isEmpty {
@@ -204,22 +208,17 @@ struct TaskDetailView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel(subtask.status == .done ? "Mark \(subtask.title) incomplete" : "Mark \(subtask.title) complete")
 
+                            VStack(alignment: .leading, spacing: 8) {
                             Button { selectedSubtask = subtask } label: {
                                 HStack(spacing: 12) {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(subtask.title)
-                                            .font(AppTypography.itemTitle)
-                                            .foregroundStyle(.primary)
-                                            .strikethrough(subtask.status == .done)
+                                        subtaskTitle(subtask)
                                         if !subtask.details.isEmpty {
                                             Text(subtask.details)
                                                 .font(AppTypography.supporting)
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(2)
                                         }
-                                        Text("\(appearance.title(for: subtask.status)) · \(subtask.priority.title)")
-                                            .font(AppTypography.caption)
-                                            .foregroundStyle(.secondary)
                                     }
                                     Spacer(minLength: 8)
                                     Image(systemName: "chevron.right")
@@ -231,6 +230,7 @@ struct TaskDetailView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open subtask \(subtask.title)")
+                            }
                         }
                         .padding(.vertical, 12)
 
@@ -239,6 +239,13 @@ struct TaskDetailView: View {
                 }
             }
         }
+    }
+
+    private func subtaskTitle(_ subtask: BoardTask) -> some View {
+        Text(subtask.title)
+            .font(AppTypography.itemTitle)
+            .foregroundStyle(.primary)
+            .strikethrough(subtask.status == .done)
     }
 
     private var prioritySymbol: String {
