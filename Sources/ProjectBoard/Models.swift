@@ -25,7 +25,7 @@ final class Project {
     var id: UUID = UUID()
     var name: String = ""
     var notes: String = ""
-    // GitHub repository metadata may sync with a project; the access token never does.
+    // Legacy integration fields retained only for existing SwiftData/CloudKit store compatibility.
     var githubRepositoryID: Int64?
     var githubRepositoryFullName: String?
     var area: ProjectArea?
@@ -75,7 +75,7 @@ final class BoardTask {
         return Array(newestByID.values)
     }
 
-    /// Shared by the task detail list and GPT export, with a stable tie-breaker.
+    /// Stable display order for subtasks, including a tie-breaker.
     var orderedSubtasks: [BoardTask] {
         subtaskList.sorted {
             if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
@@ -168,7 +168,7 @@ final class AppProfile {
     var tagNames: [String] = []
     /// Additive scalar storage keeps existing local and CloudKit profiles compatible.
     var tagColorsJSON: String = "{}"
-    /// Model preference syncs with the profile; credentials remain device-local.
+    /// Legacy field retained only for existing SwiftData/CloudKit store compatibility.
     var chatGPTModel: String = ""
     var appleUserIdentifier: String?
     var displayName: String?

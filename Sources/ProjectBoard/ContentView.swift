@@ -91,10 +91,6 @@ struct ContentView: View {
         }
         #endif
         .modifier(MainWindowSizing())
-        .overlay(alignment: .top) { TaskGPTBanner() }
-        .onReceive(NotificationCenter.default.publisher(for: .tierinGPTDidStart)) { _ in
-            linkedTask = nil
-        }
         .onAppear {
             #if os(macOS)
             if selection == nil { selection = projects.first?.id }
@@ -478,12 +474,6 @@ struct ProjectEditor: View {
     let onSave: (UUID) -> Void
     @State private var name: String
     @State private var notes: String
-    @State private var selectedRepositoryID: Int64?
-    @State private var selectedRepositoryName: String?
-    @State private var repositories: [GitHubRepository] = []
-    @State private var repositoryMessage: String?
-    @State private var loadingRepositories = false
-    @State private var repositorySearch = ""
     @State private var error: String?
 
     init(
@@ -498,8 +488,6 @@ struct ProjectEditor: View {
         self.onSave = onSave
         _name = State(initialValue: project?.name ?? "")
         _notes = State(initialValue: project?.notes ?? "")
-        _selectedRepositoryID = State(initialValue: project?.githubRepositoryID)
-        _selectedRepositoryName = State(initialValue: project?.githubRepositoryFullName)
     }
     var body: some View {
         WorkspaceItemEditor(kind: "Project", icon: AppSymbols.project, isNew: project == nil, name: $name,
@@ -511,45 +499,6 @@ struct ProjectEditor: View {
                         .font(AppTypography.body)
                     Spacer(minLength: 12)
                     areaPicker
-                }
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("GitHub repository", systemImage: "chevron.left.forwardslash.chevron.right")
-                        .font(AppTypography.body)
-                    if repositories.count > 10 {
-                        TextField("Search repositories", text: $repositorySearch)
-                            .font(AppTypography.body)
-                    }
-                    HStack {
-                    Menu {
-                        Button("None") {
-                            selectedRepositoryID = nil
-                            selectedRepositoryName = nil
-                        }
-                        ForEach(repositories.filter { repositorySearch.isEmpty || $0.fullName.localizedCaseInsensitiveContains(repositorySearch) }) { repository in
-                            Button(repository.fullName) {
-                                selectedRepositoryID = repository.id
-                                selectedRepositoryName = repository.fullName
-                            }
-                        }
-                    } label: {
-                        Text(selectedRepositoryName ?? "Choose repository")
-                            .font(AppTypography.body)
-                    }
-                    .appGlassButton(size: .medium, shape: .rectangle)
-                    .disabled(loadingRepositories || (repositories.isEmpty && selectedRepositoryID == nil))
-                    if loadingRepositories { ProgressView().controlSize(.small) }
-                    Button { Task { await loadGitHubRepositories() } } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .appGlassButton(size: .small, shape: .circle)
-                    .accessibilityLabel("Refresh repositories")
-                    .disabled(loadingRepositories)
-                    }
-                    if let repositoryMessage {
-                        Text(repositoryMessage)
-                            .font(AppTypography.caption).foregroundStyle(.secondary)
-                    }
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
@@ -573,33 +522,6 @@ struct ProjectEditor: View {
         #if os(iOS)
         .presentationDetents([.large])
         #endif
-        .task { await loadGitHubRepositories() }
-    }
-
-    private func loadGitHubRepositories() async {
-        guard !loadingRepositories else { return }
-        loadingRepositories = true
-        repositoryMessage = nil
-        defer { loadingRepositories = false }
-        do {
-            guard let token = try GitHubKeychain.read() else {
-                repositories = []
-                repositoryMessage = "Connect GitHub in Profile & Settings to choose a repository. Existing project links are kept."
-                return
-            }
-            repositories = try await GitHubClient.repositories(token: token)
-            repositoryMessage = repositories.isEmpty ? "No repositories available to this token." : nil
-            if let id = selectedRepositoryID,
-               let current = repositories.first(where: { $0.id == id }) {
-                selectedRepositoryName = current.fullName
-            } else if selectedRepositoryID != nil {
-                repositoryMessage = "The linked repository is not available to this token. Its link is kept; you can choose None to unlink it."
-            }
-        } catch is CancellationError { }
-        catch {
-            repositories = []
-            repositoryMessage = (error as? GitHubConnectionError)?.localizedDescription ?? "Couldn’t load repositories. Check your connection and refresh."
-        }
     }
 
     @ViewBuilder private var areaPicker: some View {
@@ -667,8 +589,6 @@ struct ProjectEditor: View {
                                                 hasUnlimitedAccess: purchases.hasUnlimited,
                                                 create: { Project(name: "") }) { item in
                 item.notes = notes
-                item.githubRepositoryID = selectedRepositoryID
-                item.githubRepositoryFullName = selectedRepositoryName
                 item.area = areas.first { $0.id == areaID }
             }
             onSave(item.id)
@@ -763,7 +683,6 @@ struct ProjectBoardView: View {
     let deleteProject: () -> Void
     @State private var editor: TaskEditRequest?
     @State private var viewingTask: BoardTask?
-    @State private var gptReview: TaskGPTReviewRequest?
     @State private var calendarTask: BoardTask?
     @State private var deleting: BoardTask?
     @State private var error: String?
@@ -831,19 +750,10 @@ struct ProjectBoardView: View {
         .sheet(item: $editor) {
             TaskEditor(project: project, task: $0.task, initialStatus: $0.status, parentTask: $0.parentTask)
         }
-        .sheet(item: $gptReview) { request in
-            TaskChatGPTView(runID: request.id, focusedItemID: request.itemID,
-                onAccept: { try TaskGPTAcceptance.complete($0, in: context) }, onClose: { gptReview = nil })
-        }
         .sheet(item: $viewingTask) { TaskDetailView(project: project, task: $0, onClose: nil) }
         #else
         .overlay {
-            if let gptReview {
-                MacInWindowModal(onDismiss: { self.gptReview = nil }) {
-                    TaskChatGPTView(runID: gptReview.id, focusedItemID: gptReview.itemID,
-                        onAccept: { try TaskGPTAcceptance.complete($0, in: context) }, onClose: { self.gptReview = nil })
-                }
-            } else if let calendarTask {
+            if let calendarTask {
                 MacInWindowModal(onDismiss: { self.calendarTask = nil }) {
                     CalendarDeadlineSheet(task: calendarTask, onClose: { self.calendarTask = nil })
                 }
@@ -868,9 +778,6 @@ struct ProjectBoardView: View {
             }
         }
         #endif
-        .onReceive(NotificationCenter.default.publisher(for: .tierinGPTDidStart)) { _ in
-            viewingTask = nil
-        }
         .confirmationDialog("Delete task?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete Task", role: .destructive) {
                 if let deleting { context.delete(deleting); save() }
@@ -967,10 +874,6 @@ struct ProjectBoardView: View {
                 .keyboardShortcut("n", modifiers: .command)
             Divider()
             Button("Edit Project", action: editProject)
-            if let name = project.githubRepositoryFullName,
-               let url = GitHubRepository.webURL(fullName: name) {
-                Link("Open GitHub Repository", destination: url)
-            }
             Button("Delete Project…", role: .destructive, action: deleteProject)
         } label: { Label("Create Task or Manage Project", systemImage: "plus") }
             .labelStyle(.iconOnly)
@@ -1030,9 +933,7 @@ struct ProjectBoardView: View {
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             ForEach(tasks) { task in
-                                TaskCard(task: task, onOpen: { viewingTask = task }, onResponse: { runID, itemID in
-                                    gptReview = TaskGPTReviewRequest(id: runID, itemID: itemID)
-                                })
+                                TaskCard(task: task, onOpen: { viewingTask = task })
                                     .draggable(task.id.uuidString)
                                     .contextMenu {
                                         Button("Edit Task") { editor = .init(task: task) }
@@ -1106,7 +1007,6 @@ struct ProjectBoardView: View {
 struct TaskCard: View {
     let task: BoardTask
     let onOpen: () -> Void
-    let onResponse: (UUID, UUID?) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button(action: onOpen) {
@@ -1144,7 +1044,6 @@ struct TaskCard: View {
             .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            TaskGPTResponseLinks(task: task, onOpen: onResponse)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .appCardSurface(cornerRadius: 10)

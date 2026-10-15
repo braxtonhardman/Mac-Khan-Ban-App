@@ -14,10 +14,6 @@ struct TaskDetailView: View {
     let onClose: (() -> Void)?
     @Query private var profiles: [AppProfile]
     @State private var showingEditor = false
-    @State private var showingChatGPT = false
-    @State private var chatGPTRunID = UUID()
-    @State private var focusedGPTItemID: UUID?
-    @State private var gptRuns = TaskGPTRuns.shared
     @State private var selectedSubtask: BoardTask?
     @State private var taskWasDeleted = false
     @State private var error: String?
@@ -33,9 +29,6 @@ struct TaskDetailView: View {
         .modifier(EditorSizing(width: 620, height: 700))
         .modifier(TagCreationHost())
         #if os(iOS)
-        .sheet(isPresented: $showingChatGPT) {
-            TaskChatGPTView(runID: chatGPTRunID, focusedItemID: focusedGPTItemID, onAccept: acceptGPTResponse, onClose: { showingChatGPT = false })
-        }
         .sheet(isPresented: $showingEditor, onDismiss: finishEditing) {
             TaskEditor(
                 project: project,
@@ -50,11 +43,7 @@ struct TaskDetailView: View {
         }
         #else
         .overlay {
-            if showingChatGPT {
-                MacInWindowModal(onDismiss: { showingChatGPT = false }) {
-                    TaskChatGPTView(runID: chatGPTRunID, focusedItemID: focusedGPTItemID, onAccept: acceptGPTResponse, onClose: { showingChatGPT = false })
-                }
-            } else if showingEditor {
+            if showingEditor {
                 MacInWindowModal(onDismiss: { showingEditor = false; finishEditing() }) {
                     TaskEditor(
                         project: project,
@@ -104,7 +93,6 @@ struct TaskDetailView: View {
                     .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity)
                 HStack(spacing: 10) {
-                    chatGPTButton
                     Button { showingEditor = true } label: { Image(systemName: "pencil") }
                         .appGlassButton(size: .medium, shape: .circle)
                         .keyboardShortcut("e", modifiers: .command)
@@ -127,17 +115,6 @@ struct TaskDetailView: View {
                     metadataGrid
                 }
                 descriptionSection
-                if let run = gptRuns.run(containing: task.id) {
-                    TaskDetailSection(title: "GPT activity") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Button("View GPT response ↗") {
-                                focusedGPTItemID = run.items.contains { $0.id == task.id } ? task.id : nil
-                                chatGPTRunID = run.id
-                                showingChatGPT = true
-                            }.appGlassButton()
-                        }
-                    }
-                }
                 if !task.tags.isEmpty { tagsSection }
                 subtasksSection
             }
@@ -200,58 +177,6 @@ struct TaskDetailView: View {
         }
     }
 
-    private var chatGPTButton: some View {
-        Button {
-            chatGPTRunID = gptRuns.start(taskID: task.id, title: task.title,
-                model: AppProfile.current(in: profiles)?.chatGPTModel ?? "", items: gptWorkItems())
-            gptRuns.announce(chatGPTRunID)
-            NotificationCenter.default.post(name: .tierinGPTDidStart, object: nil)
-            close()
-        } label: {
-            Image("ChatGPTLogo")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: AppGlassButtonSize.medium.iconDimension,
-                       height: AppGlassButtonSize.medium.iconDimension)
-        }
-        .appGlassButton(size: .medium, shape: .circle)
-        .accessibilityLabel("Send task to ChatGPT")
-        .help("Send task to ChatGPT")
-    }
-
-    private func gptWorkItems() -> [TaskGPTWorkItem] {
-        let context = gptContent(for: task).prompt
-        var descendants: [BoardTask] = []
-        var visited: Set<UUID> = [task.id]
-        func collect(_ parent: BoardTask) {
-            for child in parent.orderedSubtasks where visited.insert(child.id).inserted {
-                descendants.append(child)
-                collect(child)
-            }
-        }
-        collect(task)
-        guard !descendants.isEmpty else {
-            return [TaskGPTWorkItem(id: task.id, title: task.title, prompt: context)]
-        }
-        return descendants.enumerated().map { index, child in
-            TaskGPTWorkItem(id: child.id, title: child.title,
-                prompt: context + "\n\nAddress only subtask \(index + 1) in depth-first display order: \(child.title). Provide a response for this subtask; do not claim to have completed actions in Tierin.")
-        }
-    }
-
-    private func gptContent(for task: BoardTask, ancestors: Set<UUID> = []) -> TaskGPTContent {
-        let visited = ancestors.union([task.id])
-        return TaskGPTContent(
-            title: task.title,
-            description: task.details,
-            status: appearance.title(for: task.status),
-            subtasks: task.orderedSubtasks.filter { !visited.contains($0.id) }.map {
-                gptContent(for: $0, ancestors: visited)
-            }
-        )
-    }
-
     private var tagsSection: some View {
         TaskDetailSection(title: "Tags") {
             TagFlowLayout {
@@ -305,19 +230,6 @@ struct TaskDetailView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open subtask \(subtask.title)")
-                                HStack(spacing: 10) {
-                                    subtaskGPTStatus(subtask)
-                                    if let run = gptRuns.run(containing: subtask.id) {
-                                        Button {
-                                            chatGPTRunID = run.id
-                                            focusedGPTItemID = subtask.id
-                                            showingChatGPT = true
-                                        } label: {
-                                            Label("View GPT response", systemImage: "arrow.up.right")
-                                                .font(AppTypography.caption).foregroundStyle(.tint)
-                                        }.buttonStyle(.plain)
-                                    }
-                                }
                             }
                         }
                         .padding(.vertical, 12)
@@ -336,19 +248,6 @@ struct TaskDetailView: View {
             .strikethrough(subtask.status == .done)
     }
 
-    @ViewBuilder private func subtaskGPTStatus(_ subtask: BoardTask) -> some View {
-        if subtask.status == .done {
-            TagChip(name: "Finished", color: .green, compact: true)
-                .accessibilityLabel("Subtask finished")
-        } else if let run = gptRuns.run(containing: subtask.id),
-           let item = run.items.first(where: { $0.id == subtask.id }) {
-            GPTWorkStatus(state: item.state, accepted: item.accepted)
-        } else {
-            TagChip(name: "Not started", color: .secondary, compact: true)
-                .accessibilityLabel("GPT: Not started")
-        }
-    }
-
     private var prioritySymbol: String {
         switch task.priority {
         case .low: "arrow.down"
@@ -356,10 +255,6 @@ struct TaskDetailView: View {
         case .high: "arrow.up"
         case .urgent: "exclamationmark"
         }
-    }
-
-    private func acceptGPTResponse(_ taskID: UUID) throws {
-        try TaskGPTAcceptance.complete(taskID, in: context)
     }
 
     private func finishEditing() {

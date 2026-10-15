@@ -97,7 +97,6 @@ struct AppRootView: View {
                 }
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase != .active { TaskGPTRuns.shared.flushHistory() }
                 if phase == .active { Task { await purchases.refreshEntitlements() } }
                 configureCalendar()
             }
@@ -121,9 +120,6 @@ struct ProfileSettingsView: View {
     @State private var draft = BoardAppearance()
     @State private var loaded = false
     @State private var error: String?
-    @State private var gitHub = GitHubConnection()
-    @State private var chatGPT = ChatGPTConnection()
-    @State private var chatGPTModel = ""
     @State private var page: ProfilePage?
     @State private var confirmingSignOut = false
     @AppStorage("appleSessionActive") private var appleSessionActive = false
@@ -149,12 +145,6 @@ struct ProfileSettingsView: View {
                         ScrollView { SyncStatusView() }
                     case .calendar:
                         CalendarSettingsView()
-                    case .integration(let integration):
-                        if integration == .openAI {
-                            ChatGPTProfileView(connection: chatGPT, selectedModel: $chatGPTModel)
-                        } else {
-                            GitHubProfileView(connection: gitHub)
-                        }
                     case .appearance:
                         AppearanceSettingsPage(draft: $draft)
                     case .stages:
@@ -173,9 +163,6 @@ struct ProfileSettingsView: View {
         .modifier(TagCreationHost(backToParent: true))
         .onAppear {
             guard !loaded else { return }
-            gitHub.load()
-            chatGPT.load()
-            chatGPTModel = AppProfile.current(in: profiles)?.chatGPTModel ?? ""
             draft = BoardAppearance(stageNames: TaskStatus.allCases.map { appearance.title(for: $0) }, accent: appearance.accent, mode: appearance.mode)
             tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags))
             loaded = true
@@ -210,20 +197,6 @@ struct ProfileSettingsView: View {
                     )
                 }
                 .buttonStyle(.plain)
-            }
-            AppSection("Accounts") {
-                ForEach(AccountIntegration.allCases) { integration in
-                    Button { page = .integration(integration) } label: {
-                        SettingsRowLabel(
-                            icon: integration.icon,
-                            usesChatGPTLogo: integration == .openAI,
-                            title: integration.title,
-                            subtitle: integration == .openAI ? (chatGPT.account?.email ?? (chatGPT.account == nil ? "Not connected" : "ChatGPT account")) : (gitHub.username ?? (gitHub.isConnected ? "Saved on this device" : "Not connected")),
-                            value: integration == .openAI ? (chatGPT.account == nil ? "Connect" : "Connected") : (gitHub.needsReconnect ? "Reconnect" : (gitHub.isConnected ? "Connected" : "Connect"))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             AppSection("Calendar") {
                 Button { page = .calendar } label: {
@@ -343,7 +316,6 @@ struct ProfileSettingsView: View {
         profile.stageNames = names
         profile.accentName = draft.accent.rawValue
         profile.appearanceMode = draft.mode.rawValue
-        profile.chatGPTModel = chatGPTModel
         profile.tagNames = TagRules.normalized(profiles.flatMap(\.tagNames) + allTasks.flatMap(\.tags) + tagNames)
         profile.updatedAt = Date()
         do { try StoreWriter.save(context); close() }
@@ -362,7 +334,6 @@ struct ProfileSettingsView: View {
 
 private enum ProfilePage {
     case account, sync, calendar, appearance, stages, tags
-    case integration(AccountIntegration)
     var title: String {
         switch self {
         case .account: "Apple Account"
@@ -371,7 +342,6 @@ private enum ProfilePage {
         case .appearance: "Appearance"
         case .stages: "Board Stages"
         case .tags: "Tags"
-        case .integration(let integration): integration.title
         }
     }
 }
@@ -429,23 +399,16 @@ private struct AppleAccountSettingsPage: View {
 
 private struct SettingsRowLabel: View {
     let icon: String
-    var usesChatGPTLogo = false
     let title: String
     var subtitle: String? = nil
     var value: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
-            Group {
-                if usesChatGPTLogo {
-                    ChatGPTBrandIcon().frame(width: 24, height: 24)
-                } else {
-                    Image(systemName: icon)
-                        .font(AppTypography.itemTitle)
-                        .foregroundStyle(.tint)
-                        .frame(width: 24)
-                }
-            }
+            Image(systemName: icon)
+                .font(AppTypography.itemTitle)
+                .foregroundStyle(.tint)
+                .frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(AppTypography.body).foregroundStyle(.primary)
                 if let subtitle {
@@ -459,49 +422,6 @@ private struct SettingsRowLabel: View {
         }
         .contentShape(Rectangle())
         .padding(.vertical, 7)
-    }
-}
-
-private enum AccountIntegration: String, CaseIterable, Identifiable {
-    case github
-    case openAI
-
-    var id: String { rawValue }
-    var title: String { self == .github ? "GitHub" : "ChatGPT" }
-    var icon: String { self == .github ? "chevron.left.forwardslash.chevron.right" : "sparkles" }
-    var summary: String {
-        switch self {
-        case .github:
-            return "A future GitHub connection will attach issues and pull requests to tasks."
-        case .openAI:
-            return "A future OpenAI connection will support task planning and project assistance."
-        }
-    }
-}
-
-private struct AccountIntegrationView: View {
-    let integration: AccountIntegration
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: integration.icon)
-                .font(.system(size: 46))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            Text("Not connected").font(AppTypography.sectionTitle)
-            Text(integration.summary)
-                .font(AppTypography.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Label("Connection setup is planned for a later integration release.", systemImage: "clock")
-                .font(AppTypography.supporting)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("Connect \(integration.title)") {}
-                .appGlassButton(accent: true)
-                .disabled(true)
-        }
-        .padding(24)
     }
 }
 
@@ -576,69 +496,5 @@ private struct TagLibrarySettingsPage: View {
                 .padding(.top, 12)
                 .padding(.bottom, 24)
         }
-    }
-}
-
-/// Shared integration layout: an outside heading and the profile's adaptive card surface.
-struct IntegrationSettingsCard<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(AppTypography.sectionTitle).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 16, content: content)
-                .font(AppTypography.body)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(18)
-                .appCardSurface()
-        }
-    }
-}
-
-struct IntegrationAccountHeader: View {
-    let service: String
-    let identity: String
-    let connected: Bool
-    var needsReconnect = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Group {
-                if service == "ChatGPT" {
-                    ChatGPTBrandIcon()
-                } else {
-                    Image(systemName: "chevron.left.forwardslash.chevron.right")
-                        .font(AppTypography.controlIcon)
-                }
-            }
-            .frame(width: AppGlassButtonSize.small.dimension, height: AppGlassButtonSize.small.dimension)
-            .foregroundStyle(.tint)
-            .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(service).font(AppTypography.itemTitle)
-                Text(identity).font(AppTypography.supporting).foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                Label(needsReconnect ? "Reconnect required" : connected ? "Connected" : "Not connected",
-                      systemImage: needsReconnect ? "exclamationmark.circle" : connected ? "checkmark.circle.fill" : "circle")
-                    .font(AppTypography.caption)
-                    .foregroundStyle(needsReconnect ? Color.orange : connected ? Color.green : Color.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-}
-
-/// Shared with task actions so account settings never inherit a different accent blue.
-struct ChatGPTBrandIcon: View {
-    var body: some View {
-        Rectangle()
-            .fill(AccentChoice.blue.color)
-            .mask {
-                Image("ChatGPTLogo")
-                    .resizable()
-                    .scaledToFit()
-            }
-            .accessibilityHidden(true)
     }
 }

@@ -54,7 +54,7 @@ xcodebuild -project ProjectBoard.xcodeproj -scheme 'ProjectBoard iPhone' -config
 
 The top-right profile button opens shared board preferences:
 
-- The settings landing page groups profile and storage status, account integrations, and general preferences. ChatGPT offers an optional device-local account connection; see [ChatGPT setup](docs/chatgpt-profile-integration.md). GitHub connects read-only repository metadata so projects can link to a repository.
+- The settings landing page groups your Apple profile, storage and sync status, calendar settings, and general preferences.
 - Rename all four stages. Names apply across projects and task status menus; the fourth stage still counts as completed work. Existing Blocked tasks appear in In Progress, and custom names for the remaining stages are preserved.
 - Choose red, orange, yellow, green, teal, blue, purple, or pink as the app accent.
 - Choose System, Light, or Dark appearance. Light and Dark override the device setting; System follows each device. The choice syncs with your profile.
@@ -62,14 +62,6 @@ The top-right profile button opens shared board preferences:
 - Save to apply changes, including newly created tags. Cancel discards draft changes. These preferences and the tag library persist in SwiftData and sync in iCloud builds.
 - If two devices independently create a profile while offline, the newest saved profile is selected after sync; there is no database uniqueness constraint. Simultaneous edits remain subject to CloudKit merge behavior.
 - Area collapse remains a local display preference.
-
-## GitHub repository links
-
-1. Create a fine-grained personal access token at [GitHub settings](https://github.com/settings/personal-access-tokens/new). Select only the repositories you want Tierin to list. Repository **Metadata: read** is sufficient; no code, issues, or write permission is needed.
-2. Open **Profile & Settings → GitHub**, paste the token, and connect. The token is verified by reading the GitHub account name and listing available repositories and saved only in this device's Keychain.
-3. Open a project editor, search or choose one repository, and save. Use the refresh button to retry after permissions or network changes. The project board menu can open its GitHub page. Choose **None** to unlink it.
-
-The repository ID and full name are project metadata and can sync through CloudKit. Credentials do not sync; connect GitHub separately on each device to change a link. Disconnecting removes the token on that device but preserves existing project links. This version does not import issues or pull requests, and it does not change GitHub data. A token may expire or lose access to a repository; an existing link remains visible until you change it. Invalid credentials offer replacement, permission errors explain what to check, and rate limits stop requests until you retry. The picker supports up to 1,000 accessible repositories; larger selections ask you to narrow the token instead of silently hiding results.
 
 ## Apple Calendar deadlines
 
@@ -121,14 +113,10 @@ swift test
 
 Xcode compiles the core directly into both apps; Swift Package Manager builds it as a separate module. The optional package executable can use a different store because it is not bundled in the same sandbox. Use the Xcode app consistently for your real data.
 
-## Next: account integrations
+## Next
 
-1. Extend the existing read-only GitHub client beyond repository metadata when issue import is added; retain isolated HTTP tests and device-local credentials.
-2. Associate repository/issue/PR link records with stable local task UUIDs, with a tested schema upgrade.
-3. Store opt-in credentials in Keychain. Start with read-only imports and status refresh while preserving offline use.
-4. Add explicit push actions, conflict review, retries, and rate-limit tests before two-way GitHub sync.
-5. Define an `OpenAIClient` boundary and explicit user-controlled project context before enabling ChatGPT-assisted planning. Keep provider credentials in Keychain and out of SwiftData and CloudKit.
-6. Add JSON export/import, undo, manual card ordering, and broader UI automation.
+- JSON export/import, undo, manual card ordering, and broader UI automation.
+- GitHub and GPT integrations have been removed. Legacy database fields remain unused for store compatibility. Existing local GPT history and Keychain entries are not read by the app or deleted by this update.
 
 ## Validation notes
 
